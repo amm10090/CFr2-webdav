@@ -1,5 +1,5 @@
-export function generateHTML(title: string, items: { name: string, href: string }[]): string {
-    return `
+export function generateHTML(title: string, items: { name: string; href: string }[]): string {
+	return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -42,19 +42,23 @@ export function generateHTML(title: string, items: { name: string, href: string 
       <body>
           <h1>${title}</h1>
           <div class="file-list">
-              ${items.map(item => `
+              ${items
+								.map(
+									(item) => `
                   <div class="file-item">
                       <a href="${item.href}">${item.name}</a>
                   </div>
-              `).join('')}
+              `,
+								)
+								.join('')}
           </div>
       </body>
       </html>
     `;
-  }
-  
-  export function generateErrorHTML(title: string, message: string): string {
-    return `
+}
+
+export function generateErrorHTML(title: string, message: string): string {
+	return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -89,4 +93,4 @@ export function generateHTML(title: string, items: { name: string, href: string 
       </body>
       </html>
     `;
-  }
+}

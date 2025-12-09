@@ -2,11 +2,6 @@
 
 这个项目实现了一个基于 Cloudflare Workers 和 R2 存储的 WebDAV 服务器。它允许用户通过 WebDAV 协议访问和管理存储在 Cloudflare R2 中的文件和目录。
 
-[R2免费额度](https://developers.cloudflare.com/r2/pricing/)  [视频教程](https://www.bilibili.com/video/BV1mh4peNECe/)
-
-![部署Cloudflare R2 WebDAV服务，超简单拥有自己的私人网盘](https://raw.githubusercontent.com/aigem/CFr2-webdav/main/%E5%85%8D%E8%B4%B9%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2Cloudflare%20R2%20WebDAV%E6%9C%8D%E5%8A%A1%EF%BC%8C%E8%B6%85%E7%AE%80%E5%8D%95%E6%8B%A5%E6%9C%89%E8%87%AA%E5%B7%B1%E7%9A%84%E7%A7%81%E4%BA%BA%E7%BD%91%E7%9B%98-%E5%B0%81%E9%9D%A2.jpg)
-
-
 ## 特性
 
 - 完全兼容 WebDAV 协议
@@ -20,7 +15,7 @@
 
 点击下面的按钮，一键将此项目部署到您的Cloudflare Workers账户：
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/aigem/CFr2-webdav)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/amm10090/CFr2-webdav)
 
 注需要有Cloudflare账户才能使用此功能。如果您还没有账户，可以在[Cloudflare官www.cloudflare.com)注册。
 
@@ -42,8 +37,9 @@
 ### 步骤 2: 准备仓库
 
 Fork 这个仓库到您的 GitHub 账户。
+
 ```
-https://github.com/aigem/CFr2-webdav
+https://github.com/amm10090/CFr2-webdav.git
 ```
 
 ### 步骤 3: 配置 GitHub Secrets
@@ -51,8 +47,8 @@ https://github.com/aigem/CFr2-webdav
 在您的 GitHub 仓库中，转到 Settings -> Secrets and variables -> Actions，添加以下 secrets：
 
 - `CLOUDFLARE_API_TOKEN`: 步骤1的 Cloudflare API 令牌 (必须)
-- `USERNAME`: WebDAV 服务器的用户名 （可选，默认为 _user）
-- `PASSWORD`: WebDAV 服务器的密码 （可选，默认为 _pass）
+- `USERNAME`: WebDAV 服务器的用户名 （可选，默认为 \_user）
+- `PASSWORD`: WebDAV 服务器的密码 （可选，默认为 \_pass）
 - `BUCKET_NAME`: 的 R2 存储桶名称 （可选，默认为 bucket 如果与你实际的bucket不符，则GithubAction部署会失败）
 
 ### 步骤 4: 配置 GitHub Actions
@@ -70,7 +66,6 @@ https://github.com/aigem/CFr2-webdav
 
 使用任何支持 WebDAV 协议的客到您的 Worker URL，使用配置的用户名和密码进行身份验证。
 
-
 ## 本地开发（可选）
 
 如果您需要在本地进行开发和测试，请按以下步骤操作：
@@ -78,18 +73,20 @@ https://github.com/aigem/CFr2-webdav
 0. 同上面步骤1 ：配置 Cloudflare
 
 1. 克隆仓库到本地：
+
    ```bash
-   git clone https://github.com/aigem/CFr2-webdav.git
+   git clone https://github.com/amm10090/CFr2-webdav.git
    cd cf-r2-webdav
    ```
 
 2. 安装依赖：
+
    ```bash
    npm install
    ```
 
 3. 修改wrangler.toml.template为wrangler.toml文件，并修改为你的实际参数：
-  
+
 4. 使用 Wrangler 进行本地开发：
    ```bash
    npx wrangler dev --local
