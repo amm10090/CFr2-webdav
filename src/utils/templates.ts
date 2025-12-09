@@ -137,14 +137,17 @@ export function generateHTML(title: string, items: { name: string; href: string 
     const initialPath = "${currentPath}";
     let currentPath = initialPath || "/";
     let files = ${initialItems};
+    let searchTerm = "";
     let loading = false;
     let error = null;
     let viewMode = 'grid';
-    let isDemo = true;
+    const allowDemo = ${demoFlag};
+    let isDemo = false;
     let isDragging = false;
     const storedLang = localStorage.getItem('app_lang');
     const storedTheme = localStorage.getItem('app_theme');
     const storedAuth = JSON.parse(localStorage.getItem('app_auth') || '{}');
+    const storedDemo = localStorage.getItem('app_demo') === '1';
     let lang = storedLang === 'en' || storedLang === 'zh'
       ? storedLang
       : (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'zh';
@@ -154,6 +157,7 @@ export function generateHTML(title: string, items: { name: string; href: string 
       username: storedAuth.username || '',
       password: storedAuth.password || '',
     };
+    if (allowDemo && storedDemo) isDemo = true;
 
     const t = () => TRANSLATIONS[lang];
 
@@ -296,8 +300,7 @@ export function generateHTML(title: string, items: { name: string; href: string 
       }
     };
 
-    const handleCreateFolder = async () => {
-      const name = prompt(t().createFolderPrompt);
+    const handleCreateFolder = async (name) => {
       if (!name) return;
       if (isDemo) {
         files.push({ name, type: 'directory', href: (currentPath.endsWith('/') ? currentPath : currentPath + '/') + name + '/', lastModified: new Date().toISOString() });
@@ -412,6 +415,22 @@ export function generateHTML(title: string, items: { name: string; href: string 
                 <span class="hidden sm:inline">\${tdict.upload}</span>
                 <input id="fileInput" type="file" class="hidden" />
               </label>
+            </div>
+          </div>
+        </div>
+
+        <div id="folderModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100 dark:border-gray-700">
+            <div class="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">\${tdict.newFolder}</h3>
+              <button id="folderClose" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">&times;</button>
+            </div>
+            <div class="p-5 space-y-4">
+              <input id="folderName" type="text" class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" placeholder="\${tdict.newFolder}" />
+              <div class="flex justify-end space-x-3">
+                <button id="folderCancel" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">\${tdict.cancel || '取消'}</button>
+                <button id="folderConfirm" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm">\${tdict.save || '确定'}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -559,7 +578,7 @@ export function generateHTML(title: string, items: { name: string; href: string 
               </div>
               <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-xs text-blue-800 dark:text-blue-300 leading-relaxed border border-blue-100 dark:border-blue-800">\${tdict.corsTip}</div>
               <div class="flex space-x-3">
-                <button id="btnDemo" class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 font-medium">\${tdict.useDemo}</button>
+                <button id="btnDemo" class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 font-medium \${allowDemo ? '' : 'hidden'}">\${tdict.useDemo}</button>
                 <button id="btnConnect" class="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-xl font-medium shadow-md"> \${tdict.saveConnect} </button>
               </div>
             </div>
@@ -569,16 +588,32 @@ export function generateHTML(title: string, items: { name: string; href: string 
 
       // attach events
       const searchInput = document.getElementById('searchInput');
-      searchInput?.addEventListener('input', render);
+      searchInput?.addEventListener('input', (e) => {
+        const el = e.target;
+        const pos = el.selectionStart || el.value.length;
+        searchTerm = el.value;
+        render();
+        const again = document.getElementById('searchInput');
+        if (again) {
+          again.focus();
+          again.setSelectionRange(pos, pos);
+        }
+      });
       document.querySelectorAll('[data-view]').forEach(btn => {
         btn.addEventListener('click', () => { viewMode = btn.getAttribute('data-view'); render(); });
       });
       document.getElementById('openSettings')?.addEventListener('click', () => {
-        document.getElementById('modal')?.classList.remove('hidden');
+        const m = document.getElementById('modal');
+        m?.classList.remove('hidden');
+        m?.classList.add('flex');
         document.getElementById('selectLang').value = lang;
         document.getElementById('selectTheme').value = theme;
       });
-      document.getElementById('modalClose')?.addEventListener('click', () => document.getElementById('modal')?.classList.add('hidden'));
+      document.getElementById('modalClose')?.addEventListener('click', () => {
+        const m = document.getElementById('modal');
+        m?.classList.add('hidden');
+        m?.classList.remove('flex');
+      });
       document.getElementById('selectLang')?.addEventListener('change', (e) => { lang = e.target.value; localStorage.setItem('app_lang', lang); render(); });
       document.getElementById('selectTheme')?.addEventListener('change', (e) => { theme = e.target.value; localStorage.setItem('app_theme', theme); applyTheme(); });
       document.getElementById('breadcrumb-root')?.addEventListener('click', () => { currentPath = '/'; fetchFiles('/'); });
@@ -589,12 +624,39 @@ export function generateHTML(title: string, items: { name: string; href: string 
         fetchFiles(currentPath);
       }));
       document.getElementById('btnRefresh')?.addEventListener('click', () => fetchFiles(currentPath));
-      document.getElementById('btnMkcol')?.addEventListener('click', handleCreateFolder);
+      const folderModal = document.getElementById('folderModal');
+      const folderNameInput = document.getElementById('folderName');
+
+      document.getElementById('btnMkcol')?.addEventListener('click', () => {
+        if (!folderModal) return;
+        folderModal.classList.remove('hidden');
+        folderModal.classList.add('flex');
+        folderNameInput?.focus();
+      });
+      document.getElementById('folderClose')?.addEventListener('click', () => {
+        folderModal?.classList.add('hidden'); folderModal?.classList.remove('flex');
+      });
+      document.getElementById('folderCancel')?.addEventListener('click', () => {
+        folderModal?.classList.add('hidden'); folderModal?.classList.remove('flex');
+      });
+      document.getElementById('folderConfirm')?.addEventListener('click', () => {
+        const input = document.getElementById('folderName');
+        const name = input ? input.value.trim() : '';
+        folderModal?.classList.add('hidden'); folderModal?.classList.remove('flex');
+        if (input) input.value = '';
+        if (name) handleCreateFolder(name);
+      });
       document.getElementById('fileInput')?.addEventListener('change', (e) => {
         const f = e.target.files?.[0]; if (f) uploadFile(f);
       });
       document.getElementById('btnDemo')?.addEventListener('click', () => {
-        isDemo = true; localStorage.removeItem('app_auth'); document.getElementById('modal')?.classList.add('hidden'); fetchFiles('/');
+        if (!allowDemo) return;
+        isDemo = true;
+        localStorage.setItem('app_demo', '1');
+        localStorage.removeItem('app_auth');
+        document.getElementById('modal')?.classList.add('hidden');
+        document.getElementById('modal')?.classList.remove('flex');
+        fetchFiles('/');
       });
       document.getElementById('btnConnect')?.addEventListener('click', () => {
         const url = document.getElementById('inputUrl').value.trim();
@@ -604,8 +666,10 @@ export function generateHTML(title: string, items: { name: string; href: string 
         auth = { url, username: user, password: pass };
         localStorage.setItem('app_auth', JSON.stringify(auth));
         isDemo = false;
+        localStorage.removeItem('app_demo');
         currentPath = '/';
         document.getElementById('modal')?.classList.add('hidden');
+        document.getElementById('modal')?.classList.remove('flex');
         fetchFiles('/');
       });
       document.querySelectorAll('[data-href]').forEach(card => {

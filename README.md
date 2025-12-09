@@ -28,6 +28,7 @@
 - Cloudflare 账户（需有目标 Account ID）
 - 已创建的 R2 存储桶
 - GitHub 账户
+- （可选）若想在前端开启“演示模式”按钮，请设置环境变量 `DEMO_MODE=true`（默认关闭）
 
 ### 步骤 1: 准备 Cloudflare 凭据
 
@@ -63,6 +64,7 @@ https://github.com/amm10090/CFr2-webdav.git
 - `BUCKET_NAME`（必填，目标 R2 桶名）
 - `USERNAME`（可选，默认 `_user`）
 - `PASSWORD`（可选，默认 `_pass`）
+- `DEMO_MODE`（可选，设为 `true` 时在前端显示“演示模式”入口；默认不显示）
 
 ### 步骤 4: 配置 GitHub Actions
 

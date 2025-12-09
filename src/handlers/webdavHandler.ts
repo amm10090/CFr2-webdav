@@ -19,7 +19,7 @@ export async function handleWebDAV(request: Request, env: Env): Promise<Response
 			case 'HEAD':
 				return await handleHead(request, BUCKET);
 			case 'GET':
-				return await handleGet(request, BUCKET, BUCKET_NAME);
+				return await handleGet(request, BUCKET, BUCKET_NAME, env);
 			case 'PUT':
 				return await handlePut(request, BUCKET);
 			case 'DELETE':
@@ -87,17 +87,22 @@ async function handleHead(request: Request, bucket: R2Bucket): Promise<Response>
 	});
 }
 
-async function handleGet(request: Request, bucket: R2Bucket, bucketName: string): Promise<Response> {
+async function handleGet(request: Request, bucket: R2Bucket, bucketName: string, env: Env): Promise<Response> {
 	const resource_path = make_resource_path(request);
 
 	if (request.url.endsWith('/')) {
-		return await handleDirectory(bucket, resource_path, bucketName);
+		return await handleDirectory(bucket, resource_path, bucketName, env);
 	} else {
 		return await handleFile(bucket, resource_path);
 	}
 }
 
-async function handleDirectory(bucket: R2Bucket, resource_path: string, bucketName: string): Promise<Response> {
+async function handleDirectory(
+	bucket: R2Bucket,
+	resource_path: string,
+	bucketName: string,
+	env: Env,
+): Promise<Response> {
 	let items = [];
 
 	if (resource_path !== '') {
@@ -121,7 +126,7 @@ async function handleDirectory(bucket: R2Bucket, resource_path: string, bucketNa
 		});
 	}
 
-	const page = generateHTML('WebDAV File Browser', items, resource_path || '/');
+	const page = generateHTML('WebDAV File Browser', items, resource_path || '/', env.DEMO_MODE === 'true');
 	return new Response(page, {
 		status: 200,
 		headers: { 'Content-Type': 'text/html; charset=utf-8' },

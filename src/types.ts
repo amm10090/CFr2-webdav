@@ -4,6 +4,7 @@ export interface Env {
 	USERNAME: string;
 	PASSWORD: string;
 	BUCKET_NAME: string;
+	DEMO_MODE?: string;
 }
 
 export interface CacheableResponse {
