@@ -182,7 +182,15 @@ async function handlePut(request: Request, bucket: R2Bucket): Promise<Response> 
 async function handleDelete(request: Request, bucket: R2Bucket): Promise<Response> {
 	const resource_path = make_resource_path(request);
 
+	if (!resource_path) {
+		return new Response('Bad Request: empty path', { status: 400 });
+	}
+
 	try {
+		const head = await bucket.head(resource_path);
+		if (!head) {
+			return new Response('Not Found', { status: 404 });
+		}
 		await bucket.delete(resource_path);
 		return new Response('No Content', { status: 204 });
 	} catch (error) {
