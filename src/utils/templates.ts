@@ -1,11 +1,11 @@
+import { TAILWIND_CSS } from './tailwindInline';
+
 export function generateHTML(
 	title: string,
 	items: { name: string; href: string }[],
 	currentPath = '/',
 	allowDemo = false,
 ): string {
-	// Tailwind 样式在构建时嵌入，避免生产环境使用 CDN 报警告
-	const { TAILWIND_CSS } = require('./tailwindInline');
 	// The heavy UI logic runs on the client; we pass minimal initial data to avoid duplicate fetch.
 	const initialItems = JSON.stringify(items || []);
 	const safeTitle = title || 'R2 WebDAV';
