@@ -406,7 +406,7 @@ export function generateHTML(
       const previewIsImage = previewFile ? isImageFile(previewFile.name) : false;
       const previewSrc = previewFile
         ? (isDemo
-            ? `https://placehold.co/1200x800?text=${encodeURIComponent(previewFile.name)}`
+            ? 'https://placehold.co/1200x800?text=' + encodeURIComponent(previewFile.name)
             : (auth.url ? auth.url.replace(/\\/$/, '') + previewFile.href : previewFile.href))
         : '';
       applyTheme();
