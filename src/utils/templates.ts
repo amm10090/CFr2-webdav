@@ -4,6 +4,8 @@ export function generateHTML(
 	currentPath = '/',
 	allowDemo = false,
 ): string {
+	// Tailwind 样式在构建时嵌入，避免生产环境使用 CDN 报警告
+	const { TAILWIND_CSS } = require('./tailwindInline');
 	// The heavy UI logic runs on the client; we pass minimal initial data to avoid duplicate fetch.
 	const initialItems = JSON.stringify(items || []);
 	const safeTitle = title || 'R2 WebDAV';
@@ -16,12 +18,7 @@ export function generateHTML(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${safeTitle}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-    };
-  </script>
+  <style>${TAILWIND_CSS}</style>
   <style>
     * { box-sizing: border-box; }
     .scrollbar-hide::-webkit-scrollbar { display: none; }
