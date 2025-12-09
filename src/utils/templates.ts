@@ -150,6 +150,11 @@ export function generateHTML(
     const allowDemo = ${demoFlag};
     let isDemo = false;
     let isDragging = false;
+    // 预览态
+    let previewFile = null;
+    let previewScale = 1;
+    let previewRotation = 0;
+    let previewKeyHandler = null;
     const storedLang = localStorage.getItem('app_lang');
     const storedTheme = localStorage.getItem('app_theme');
     const storedAuth = JSON.parse(localStorage.getItem('app_auth') || '{}');
@@ -236,6 +241,54 @@ export function generateHTML(
       if (['pdf','txt','doc','docx','md','json'].includes(ext)) return icon('text-gray-500 dark:text-gray-400');
       if (['zip','rar','7z','tar','gz'].includes(ext)) return icon('text-orange-500');
       return icon('text-gray-400');
+    };
+
+    const isImageFile = (name) => {
+      const ext = (name.split('.').pop() || '').toLowerCase();
+      return ['jpg','jpeg','png','gif','svg','webp','bmp','ico','tiff','avif'].includes(ext);
+    };
+
+    const openPreview = (file) => {
+      previewFile = file;
+      previewScale = 1;
+      previewRotation = 0;
+      render();
+    };
+
+    const closePreview = () => {
+      previewFile = null;
+      render();
+    };
+
+    const applyLightboxTransform = () => {
+      const img = document.getElementById('lightbox-image');
+      if (img) {
+        img.style.transform = `scale(${previewScale}) rotate(${previewRotation}deg)`;
+      }
+    };
+
+    const attachPreviewKeydown = () => {
+      if (previewKeyHandler) {
+        window.removeEventListener('keydown', previewKeyHandler);
+      }
+      if (!previewFile) {
+        previewKeyHandler = null;
+        return;
+      }
+      previewKeyHandler = (e) => {
+        if (e.key === 'Escape') {
+          closePreview();
+        }
+        if ((e.key === '+' || e.key === '=') && previewFile && isImageFile(previewFile.name)) {
+          previewScale = Math.min(3, previewScale + 0.25);
+          applyLightboxTransform();
+        }
+        if (e.key === '-' && previewFile && isImageFile(previewFile.name)) {
+          previewScale = Math.max(0.5, previewScale - 0.25);
+          applyLightboxTransform();
+        }
+      };
+      window.addEventListener('keydown', previewKeyHandler);
     };
 
     const applyTheme = () => {
@@ -350,6 +403,12 @@ export function generateHTML(
       const filtered = files.filter((f) => f.name.toLowerCase().includes((document.getElementById('searchInput')?.value || '').toLowerCase()));
       const sorted = [...filtered].sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'directory' ? -1 : 1));
       const tdict = t();
+      const previewIsImage = previewFile ? isImageFile(previewFile.name) : false;
+      const previewSrc = previewFile
+        ? (isDemo
+            ? `https://placehold.co/1200x800?text=${encodeURIComponent(previewFile.name)}`
+            : (auth.url ? auth.url.replace(/\\/$/, '') + previewFile.href : previewFile.href))
+        : '';
       applyTheme();
 
       app.innerHTML = \`
@@ -468,7 +527,7 @@ export function generateHTML(
           : viewMode === 'grid' ? \`
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
               \${sorted.map(file => \`
-                <div data-href="\${file.href}" data-type="\${file.type}"
+                <div data-href="\${file.href}" data-type="\${file.type}" data-name="\${file.name}"
                   class="group relative bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md hover:border-blue-400 dark:hover:border-blue-500 hover:bg-gray-50 dark:hover:bg-gray-750 transition cursor-pointer flex flex-col items-center text-center aspect-[4/5] justify-between">
                   <div class="flex-1 flex items-center justify-center w-full transform group-hover:scale-105 transition">
                     \${renderFileIcon(file)}
@@ -495,7 +554,7 @@ export function generateHTML(
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   \${sorted.map(file => \`
-                    <tr data-href="\${file.href}" data-type="\${file.type}" class="hover:bg-blue-50/50 dark:hover:bg-blue-900/10 cursor-pointer transition group">
+                    <tr data-href="\${file.href}" data-type="\${file.type}" data-name="\${file.name}" class="hover:bg-blue-50/50 dark:hover:bg-blue-900/10 cursor-pointer transition group">
                       <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex items-center">
                           <div class="flex-shrink-0 h-10 w-10 flex items-center justify-center">
@@ -533,6 +592,38 @@ export function generateHTML(
               <span class="text-xl font-bold text-blue-800 dark:text-blue-300">\${tdict.dropToUpload}</span>
             </div>
           </div>\` : ''}
+
+        \${previewFile ? \`
+          <div id="lightbox" class="fixed inset-0 z-[55] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-white">
+            <div class="absolute top-4 right-4 flex items-center gap-2">
+              <button id="lb-zoom-out" class="p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10" title="缩小">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button id="lb-zoom-in" class="p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10" title="放大">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button id="lb-rotate" class="p-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10" title="旋转90°">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 4 10 4 10 10"/><polyline points="20 20 14 20 14 14"/><line x1="14" y1="10" x2="20" y2="4"/><line x1="10" y1="14" x2="4" y2="20"/></svg>
+              </button>
+              <button id="lb-close" class="p-2 rounded-full bg-white/10 hover:bg-red-500/70 border border-white/10" title="关闭">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div class="max-w-6xl w-full flex items-center justify-center max-h-[85vh]">
+              \${previewIsImage ? \`
+                <img id="lightbox-image" src="\${previewSrc}" alt="\${previewFile?.name || ''}"
+                  class="max-h-[80vh] max-w-full object-contain shadow-2xl rounded-xl border border-white/10 bg-white/5"
+                  style="transform: scale(\${previewScale}) rotate(\${previewRotation}deg); transition: transform 120ms ease-out;" />
+              \` : \`
+                <div class="text-center space-y-3">
+                  <p class="text-lg font-semibold">当前仅支持图片预览</p>
+                  <button id="lb-close2" class="px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30">关闭</button>
+                </div>
+              \`}
+            </div>
+            <div class="mt-3 text-sm text-white/70 truncate max-w-3xl px-3">\${previewFile?.name || ''}</div>
+          </div>\`
+        : ''}
 
         <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100 dark:border-gray-700">
@@ -682,9 +773,13 @@ export function generateHTML(
         card.addEventListener('click', () => {
           const href = card.getAttribute('data-href');
           const type = card.getAttribute('data-type');
+          const name = card.getAttribute('data-name') || '';
+          const file = files.find((f) => f.href === href) || { name, href, type };
           if (type === 'directory') {
             currentPath = href.endsWith('/') ? href : href + '/';
             fetchFiles(currentPath);
+          } else if (isImageFile(file.name)) {
+            openPreview(file);
           } else {
             if (isDemo) {
               alert(t().demoMode + ': ' + href);
@@ -700,6 +795,23 @@ export function generateHTML(
       document.querySelectorAll('[data-dl]').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); const href = btn.getAttribute('data-dl'); if (isDemo) alert(t().demoMode); else window.open(auth.url.replace(/\\/$/, '') + href, '_blank'); });
       });
+      const lb = document.getElementById('lightbox');
+      if (lb) {
+        lb.addEventListener('click', (e) => { if (e.target === lb) closePreview(); });
+      }
+      const bindLb = (id, fn) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+        }
+      };
+      bindLb('lb-close', closePreview);
+      bindLb('lb-close2', closePreview);
+      bindLb('lb-zoom-in', () => { previewScale = Math.min(3, previewScale + 0.25); applyLightboxTransform(); });
+      bindLb('lb-zoom-out', () => { previewScale = Math.max(0.5, previewScale - 0.25); applyLightboxTransform(); });
+      bindLb('lb-rotate', () => { previewRotation = (previewRotation + 90) % 360; applyLightboxTransform(); });
+      applyLightboxTransform();
+      attachPreviewKeydown();
     };
 
     // Drag & drop
