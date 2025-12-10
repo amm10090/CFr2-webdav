@@ -2,7 +2,14 @@
 import type { Env, AuthContext } from '../types';
 import { verifyPassword } from './crypto';
 import { verifyToken, extractToken, generateAccessToken, generateRefreshToken } from './jwt';
-import { checkRateLimit, resetRateLimit, getClientIdentifier, LOGIN_RATE_LIMIT } from './rateLimit';
+import {
+	checkRateLimit,
+	getRateLimitStatus,
+	resetRateLimit,
+	blockIdentifier,
+	getClientIdentifier,
+	LOGIN_RATE_LIMIT,
+} from './rateLimit';
 
 /**
  * Authenticate a request using hybrid authentication
@@ -292,7 +299,26 @@ async function safeJson<T>(request: Request): Promise<T> {
 }
 
 /**
- * 登录限流：同时对 IP、用户名、组合键进行限制，任一超限则拦截
+ * Multi-tier login rate limiting with single-increment enforcement
+ *
+ * Enforces rate limits across three dimensions (IP-only, user-only, user+IP combination)
+ * while only incrementing the counter once per request to avoid triple-counting.
+ *
+ * Implementation:
+ * 1. First checks all three keys in read-only mode (getRateLimitStatus)
+ * 2. If any key is already blocked, returns immediately without incrementing
+ * 3. Only increments the most granular key (user+IP combo)
+ * 4. If that increment triggers blocking, propagates block to other keys
+ *
+ * This prevents the issue where a single failed login would increment counters
+ * three times (once per key), causing users to be blocked after ~2 attempts
+ * instead of the configured 5 attempts.
+ *
+ * @param env - Environment variables
+ * @param username - Username being authenticated
+ * @param request - HTTP request for extracting client identifier
+ * @param returnDetail - If true, return retry-after timing in response
+ * @returns Object with allowed flag and optional retryAfter seconds
  */
 async function enforceLoginRateLimit(
 	env: Env,
@@ -301,39 +327,56 @@ async function enforceLoginRateLimit(
 	returnDetail = false,
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
 	const clientId = getClientIdentifier(request);
-	const keys = [
-		`login:ip:${clientId}`,
-		`login:user:${username}`,
-		`login:user-ip:${username}:${clientId}`,
-	];
+	const keyIp = `login:ip:${clientId}`;
+	const keyUser = `login:user:${username}`;
+	const keyCombo = `login:user-ip:${username}:${clientId}`;
 
-	let blockedUntil: number | undefined;
-	let blocked = false;
+	// Phase 1: Check all keys in read-only mode (no increments)
+	const [ipStatus, userStatus, comboStatus] = await Promise.all([
+		getRateLimitStatus(env.RATE_LIMIT_KV, keyIp, LOGIN_RATE_LIMIT),
+		getRateLimitStatus(env.RATE_LIMIT_KV, keyUser, LOGIN_RATE_LIMIT),
+		getRateLimitStatus(env.RATE_LIMIT_KV, keyCombo, LOGIN_RATE_LIMIT),
+	]);
 
-	for (const key of keys) {
-		const result = await checkRateLimit(env.RATE_LIMIT_KV, key, LOGIN_RATE_LIMIT);
-		if (!result.allowed) {
-			blocked = true;
-			// 取最大阻塞时间，确保返回合理的 Retry-After
-			if (result.blockedUntil) {
-				blockedUntil = Math.max(blockedUntil ?? 0, result.blockedUntil);
-			}
-			if (!returnDetail) {
-				return { allowed: false };
-			}
+	// If any key is already blocked, reject immediately without incrementing
+	const blockedStatuses = [ipStatus, userStatus, comboStatus].filter((s) => !s.allowed);
+	if (blockedStatuses.length > 0) {
+		// Find the maximum blocked time across all blocked keys
+		const blockedUntil = Math.max(
+			...blockedStatuses
+				.map((s) => s.blockedUntil ?? s.resetAt ?? 0)
+				.filter((v) => v > 0)
+		);
+
+		if (returnDetail && blockedUntil > 0) {
+			const retryAfter = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
+			return { allowed: false, retryAfter };
 		}
+
+		return { allowed: false };
 	}
 
-	if (blockedUntil) {
+	// Phase 2: All keys are under threshold, increment only the most granular key (combo)
+	const comboCheck = await checkRateLimit(env.RATE_LIMIT_KV, keyCombo, LOGIN_RATE_LIMIT);
+	if (comboCheck.allowed) {
+		return { allowed: true };
+	}
+
+	// Phase 3: Combo key reached threshold, propagate block to related keys
+	// This ensures consistent enforcement across all dimensions
+	const blockedUntil = comboCheck.blockedUntil ?? Date.now() + LOGIN_RATE_LIMIT.blockDurationMs;
+
+	await Promise.all([
+		blockIdentifier(env.RATE_LIMIT_KV, keyIp, LOGIN_RATE_LIMIT),
+		blockIdentifier(env.RATE_LIMIT_KV, keyUser, LOGIN_RATE_LIMIT),
+	]);
+
+	if (returnDetail) {
 		const retryAfter = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
 		return { allowed: false, retryAfter };
 	}
 
-	if (blocked) {
-		return { allowed: false };
-	}
-
-	return { allowed: true };
+	return { allowed: false };
 }
 
 /**

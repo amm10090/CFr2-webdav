@@ -229,6 +229,41 @@ export async function getRateLimitStatus(
 }
 
 /**
+ * Force an identifier into blocked state without incrementing attempts
+ *
+ * Used for coordinated blocking across multiple rate limit keys (e.g., IP, user, user+IP).
+ * When one key reaches the threshold, this function can block the related keys to maintain
+ * consistent enforcement across all dimensions.
+ *
+ * @param kv - KV namespace for storing rate limit state
+ * @param identifier - Unique identifier to block
+ * @param config - Rate limit configuration
+ *
+ * @example
+ * // When user+IP combo is blocked, also block the user key
+ * await blockIdentifier(env.RATE_LIMIT_KV, `login:user:${username}`, LOGIN_RATE_LIMIT);
+ */
+export async function blockIdentifier(
+	kv: KVNamespace,
+	identifier: string,
+	config: RateLimitConfig = LOGIN_RATE_LIMIT
+): Promise<void> {
+	const key = `ratelimit:${identifier}`;
+	const now = Date.now();
+	const blockedUntil = now + config.blockDurationMs;
+
+	const state: RateLimitState = {
+		attempts: config.maxAttempts,
+		windowStart: now,
+		blockedUntil,
+	};
+
+	await kv.put(key, JSON.stringify(state), {
+		expirationTtl: Math.floor(config.blockDurationMs / 1000),
+	});
+}
+
+/**
  * Get client identifier for rate limiting
  *
  * Extracts the best available identifier from the request:
