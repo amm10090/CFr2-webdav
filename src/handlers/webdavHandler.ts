@@ -2,18 +2,26 @@
 import { listAll, fromR2Object, make_resource_path, generatePropfindResponse } from '../utils/webdavUtils';
 import { logger } from '../utils/logger';
 import { generateHTML, generateErrorHTML } from '../utils/templates';
-import { WebDAVProps, Env } from '../types';
-import { authenticate } from '../utils/auth';
+import { WebDAVProps, Env, AuthContext } from '../types';
+import {
+	validateFileName,
+	validateDirectoryName,
+	validateFileSize,
+	validateContentType,
+	checkStorageQuota,
+	updateStorageQuota,
+	FILE_SIZE_LIMIT,
+	TOTAL_STORAGE_LIMIT,
+} from '../utils/validation';
 
 const SUPPORT_METHODS = ['OPTIONS', 'PROPFIND', 'MKCOL', 'GET', 'HEAD', 'PUT', 'COPY', 'MOVE', 'DELETE'];
 const DAV_CLASS = '1, 2';
 
-export async function handleWebDAV(request: Request, env: Env): Promise<Response> {
-	const { BUCKET, BUCKET_NAME } = env; // 从 env 中获取 BUCKET 和 BUCKET_NAME
+export async function handleWebDAV(request: Request, env: Env, authContext: AuthContext): Promise<Response> {
+	const { BUCKET, BUCKET_NAME } = env;
 
 	try {
 		switch (request.method) {
-			// 原来的处理逻辑不变
 			case 'OPTIONS':
 				return handleOptions();
 			case 'HEAD':
@@ -21,17 +29,17 @@ export async function handleWebDAV(request: Request, env: Env): Promise<Response
 			case 'GET':
 				return await handleGet(request, BUCKET, BUCKET_NAME, env);
 			case 'PUT':
-				return await handlePut(request, BUCKET);
+				return await handlePut(request, BUCKET, env);
 			case 'DELETE':
-				return await handleDelete(request, BUCKET);
+				return await handleDelete(request, BUCKET, env);
 			case 'MKCOL':
 				return await handleMkcol(request, BUCKET);
 			case 'PROPFIND':
 				return await handlePropfind(request, BUCKET, BUCKET_NAME);
 			case 'COPY':
-				return await handleCopy(request, BUCKET);
+				return await handleCopy(request, BUCKET, env);
 			case 'MOVE':
-				return await handleMove(request, BUCKET);
+				return await handleMove(request, BUCKET, env);
 			default:
 				return new Response('Method Not Allowed', {
 					status: 405,
@@ -44,6 +52,21 @@ export async function handleWebDAV(request: Request, env: Env): Promise<Response
 	} catch (error) {
 		const err = error as Error;
 		logger.error('Error in WebDAV handling:', err.message);
+
+		// Check if it's a validation error
+		if (
+			err.message.includes('not allowed') ||
+			err.message.includes('too long') ||
+			err.message.includes('exceeds limit') ||
+			err.message.includes('quota exceeded') ||
+			err.message.includes('invalid')
+		) {
+			return new Response(generateErrorHTML('Validation Error', err.message), {
+				status: 400,
+				headers: { 'Content-Type': 'text/html; charset=utf-8' },
+			});
+		}
+
 		return new Response(generateErrorHTML('Internal Server Error', err.message), {
 			status: 500,
 			headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -158,20 +181,73 @@ async function handleFile(bucket: R2Bucket, resource_path: string): Promise<Resp
 	}
 }
 
-async function handlePut(request: Request, bucket: R2Bucket): Promise<Response> {
+async function handlePut(request: Request, bucket: R2Bucket, env: Env): Promise<Response> {
 	const resource_path = make_resource_path(request);
 
 	try {
+		// Extract filename from path
+		const filename = resource_path.split('/').pop() || '';
+
+		// Validate filename
+		validateFileName(filename);
+
+		// Get file size from Content-Length header
+		const contentLength = request.headers.get('Content-Length');
+		if (!contentLength) {
+			return new Response('Content-Length header required', { status: 411 });
+		}
+
+		const fileSize = parseInt(contentLength, 10);
+		if (isNaN(fileSize)) {
+			return new Response('Invalid Content-Length', { status: 400 });
+		}
+
+		// Validate file size
+		const maxFileSize = env.MAX_FILE_SIZE ? parseInt(env.MAX_FILE_SIZE, 10) : FILE_SIZE_LIMIT;
+		validateFileSize(fileSize, maxFileSize);
+
+		// Validate Content-Type
+		const contentType = request.headers.get('Content-Type');
+		validateContentType(contentType);
+
+		// Check storage quota
+		const maxQuota = env.STORAGE_QUOTA ? parseInt(env.STORAGE_QUOTA, 10) : TOTAL_STORAGE_LIMIT;
+		await checkStorageQuota(env.QUOTA_KV, fileSize, maxQuota);
+
+		// Check if file already exists to handle quota update correctly
+		const existingFile = await bucket.head(resource_path);
+		const oldFileSize = existingFile?.size || 0;
+
+		// Upload file
 		const body = await request.arrayBuffer();
 		await bucket.put(resource_path, body, {
 			httpMetadata: {
-				contentType: request.headers.get('Content-Type') || 'application/octet-stream',
+				contentType: contentType || 'application/octet-stream',
 			},
 		});
-		return new Response('Created', { status: 201 });
+
+		// Update quota (net change = new size - old size)
+		const quotaDelta = fileSize - oldFileSize;
+		const fileDelta = existingFile ? 0 : 1; // Only count as new file if didn't exist before
+		if (quotaDelta !== 0 || fileDelta !== 0) {
+			await updateStorageQuota(env.QUOTA_KV, quotaDelta, fileDelta);
+		}
+
+		return new Response('Created', { status: existingFile ? 204 : 201 });
 	} catch (error) {
 		const err = error as Error;
 		logger.error('Error uploading file:', err.message);
+
+		// Re-throw validation errors to be caught by main handler
+		if (
+			err.message.includes('not allowed') ||
+			err.message.includes('too long') ||
+			err.message.includes('exceeds limit') ||
+			err.message.includes('quota exceeded')
+		) {
+			throw err;
+		}
+
 		return new Response(generateErrorHTML('Error uploading file', err.message), {
 			status: 500,
 			headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -179,7 +255,7 @@ async function handlePut(request: Request, bucket: R2Bucket): Promise<Response> 
 	}
 }
 
-async function handleDelete(request: Request, bucket: R2Bucket): Promise<Response> {
+async function handleDelete(request: Request, bucket: R2Bucket, env: Env): Promise<Response> {
 	const resource_path = make_resource_path(request);
 
 	if (!resource_path) {
@@ -191,7 +267,13 @@ async function handleDelete(request: Request, bucket: R2Bucket): Promise<Respons
 		if (!head) {
 			return new Response('Not Found', { status: 404 });
 		}
+
+		// Delete the file
 		await bucket.delete(resource_path);
+
+		// Update quota (decrease)
+		await updateStorageQuota(env.QUOTA_KV, -head.size, -1);
+
 		return new Response('No Content', { status: 204 });
 	} catch (error) {
 		const err = error as Error;
@@ -211,6 +293,12 @@ async function handleMkcol(request: Request, bucket: R2Bucket): Promise<Response
 	}
 
 	try {
+		// Extract directory name and validate
+		const dirname = resource_path.split('/').pop() || '';
+		if (dirname) {
+			validateDirectoryName(dirname);
+		}
+
 		await bucket.put(resource_path + '/', new Uint8Array(), {
 			customMetadata: { resourcetype: 'collection' },
 		});
@@ -218,6 +306,12 @@ async function handleMkcol(request: Request, bucket: R2Bucket): Promise<Response
 	} catch (error) {
 		const err = error as Error;
 		logger.error('Error creating collection:', err.message);
+
+		// Re-throw validation errors
+		if (err.message.includes('not allowed') || err.message.includes('too long') || err.message.includes('invalid')) {
+			throw err;
+		}
+
 		return new Response(generateErrorHTML('Error creating collection', err.message), {
 			status: 500,
 			headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -260,7 +354,7 @@ async function handlePropfind(request: Request, bucket: R2Bucket, bucketName: st
 	}
 }
 
-async function handleCopy(request: Request, bucket: R2Bucket): Promise<Response> {
+async function handleCopy(request: Request, bucket: R2Bucket, env: Env): Promise<Response> {
 	const sourcePath = make_resource_path(request);
 	const destinationHeader = request.headers.get('Destination');
 	if (!destinationHeader) {
@@ -275,15 +369,44 @@ async function handleCopy(request: Request, bucket: R2Bucket): Promise<Response>
 			return new Response('Not Found', { status: 404 });
 		}
 
+		// Validate destination filename
+		const destFilename = destinationPath.split('/').pop() || '';
+		validateFileName(destFilename);
+
+		// Check quota for copy operation
+		const maxQuota = env.STORAGE_QUOTA ? parseInt(env.STORAGE_QUOTA, 10) : TOTAL_STORAGE_LIMIT;
+		await checkStorageQuota(env.QUOTA_KV, sourceObject.size, maxQuota);
+
+		// Check if destination already exists
+		const existingDest = await bucket.head(destinationPath);
+		const oldDestSize = existingDest?.size || 0;
+
 		await bucket.put(destinationPath, sourceObject.body, {
 			httpMetadata: sourceObject.httpMetadata,
 			customMetadata: sourceObject.customMetadata,
 		});
 
-		return new Response('Created', { status: 201 });
+		// Update quota (new file size - old file size if overwriting)
+		const quotaDelta = sourceObject.size - oldDestSize;
+		const fileDelta = existingDest ? 0 : 1;
+		if (quotaDelta !== 0 || fileDelta !== 0) {
+			await updateStorageQuota(env.QUOTA_KV, quotaDelta, fileDelta);
+		}
+
+		return new Response('Created', { status: existingDest ? 204 : 201 });
 	} catch (error) {
 		const err = error as Error;
 		logger.error('Error copying object:', err.message);
+
+		// Re-throw validation errors
+		if (
+			err.message.includes('not allowed') ||
+			err.message.includes('exceeds limit') ||
+			err.message.includes('quota exceeded')
+		) {
+			throw err;
+		}
+
 		return new Response(generateErrorHTML('Error copying file', err.message), {
 			status: 500,
 			headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -291,7 +414,7 @@ async function handleCopy(request: Request, bucket: R2Bucket): Promise<Response>
 	}
 }
 
-async function handleMove(request: Request, bucket: R2Bucket): Promise<Response> {
+async function handleMove(request: Request, bucket: R2Bucket, env: Env): Promise<Response> {
 	const sourcePath = make_resource_path(request);
 	const destinationHeader = request.headers.get('Destination');
 	if (!destinationHeader) {
@@ -306,16 +429,41 @@ async function handleMove(request: Request, bucket: R2Bucket): Promise<Response>
 			return new Response('Not Found', { status: 404 });
 		}
 
+		// Validate destination filename
+		const destFilename = destinationPath.split('/').pop() || '';
+		validateFileName(destFilename);
+
+		// Check if destination already exists
+		const existingDest = await bucket.head(destinationPath);
+		const oldDestSize = existingDest?.size || 0;
+
+		// Move is copy + delete
 		await bucket.put(destinationPath, sourceObject.body, {
 			httpMetadata: sourceObject.httpMetadata,
 			customMetadata: sourceObject.customMetadata,
 		});
 
 		await bucket.delete(sourcePath);
+
+		// Update quota
+		// Net change = (new dest size - old dest size) - source size
+		// File count change = +1 if dest was new, -1 for source deletion
+		const quotaDelta = sourceObject.size - oldDestSize - sourceObject.size;
+		const fileDelta = (existingDest ? 0 : 1) - 1; // +1 for new dest, -1 for deleted source
+		if (quotaDelta !== 0 || fileDelta !== 0) {
+			await updateStorageQuota(env.QUOTA_KV, quotaDelta, fileDelta);
+		}
+
 		return new Response('No Content', { status: 204 });
 	} catch (error) {
 		const err = error as Error;
 		logger.error('Error moving object:', err.message);
+
+		// Re-throw validation errors
+		if (err.message.includes('not allowed')) {
+			throw err;
+		}
+
 		return new Response(generateErrorHTML('Error moving file', err.message), {
 			status: 500,
 			headers: { 'Content-Type': 'text/html; charset=utf-8' },

@@ -4,10 +4,40 @@ compatibility_date = "2023-01-01"
 account_id = "$ACCOUNT_ID"
 
 [vars]
+# Basic configuration
 USERNAME = "$USERNAME"
-PASSWORD = "$PASSWORD"
 BUCKET_NAME = "$BUCKET_NAME"
 
+# Security configuration (Stage 1)
+# Generate PASSWORD_HASH using: npx wrangler dev --test-scheduled and call crypto.hashPassword()
+# Or use the generatePasswordHashForEnv() helper function
+PASSWORD_HASH = "$PASSWORD_HASH"
+JWT_SECRET = "$JWT_SECRET"
+WORKER_URL = "$WORKER_URL"
+
+# Optional: File size and storage limits (defaults: 100MB, 10GB)
+# MAX_FILE_SIZE = "104857600"
+# STORAGE_QUOTA = "10737418240"
+
+# Optional: Legacy plaintext password (for backward compatibility only, will be removed in future)
+# PASSWORD = "$PASSWORD"
+
+# Optional: Demo mode (for testing only)
+# DEMO_MODE = "true"
+
+# R2 bucket binding
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "$BUCKET_NAME"
+
+# KV namespace bindings (Stage 1 security features)
+# Create these KV namespaces in your Cloudflare dashboard or via wrangler:
+#   wrangler kv:namespace create "RATE_LIMIT_KV"
+#   wrangler kv:namespace create "QUOTA_KV"
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "$RATE_LIMIT_KV_ID"
+
+[[kv_namespaces]]
+binding = "QUOTA_KV"
+id = "$QUOTA_KV_ID"

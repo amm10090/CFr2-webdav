@@ -2,6 +2,68 @@
 import { R2Object } from '@cloudflare/workers-types';
 import { WebDAVProps } from '../types';
 
+/**
+ * Validate a resource path for security
+ *
+ * Prevents:
+ * - Path traversal attacks (../)
+ * - Absolute paths (starting with /)
+ * - Dangerous characters (null bytes, etc.)
+ * - Excessively long paths
+ *
+ * @param path - Path to validate
+ * @throws {Error} If path is invalid or dangerous
+ */
+function validatePath(path: string): void {
+	// Empty path is allowed (represents root)
+	if (!path || path.length === 0) {
+		return;
+	}
+
+	// Check path length
+	if (path.length > 1024) {
+		throw new Error('Path too long (maximum 1024 characters)');
+	}
+
+	// Prohibit path traversal attempts
+	if (path.includes('..')) {
+		throw new Error('Path traversal not allowed');
+	}
+
+	// Prohibit absolute paths (should be relative)
+	if (path.startsWith('/')) {
+		throw new Error('Absolute paths not allowed');
+	}
+
+	// Prohibit dangerous characters
+	// \x00-\x1f: Control characters (including null byte)
+	// \x7f: DEL character
+	// <>:"|?*: Windows forbidden characters that may cause issues
+	const dangerousChars = /[\x00-\x1f\x7f<>:"|?*]/;
+	if (dangerousChars.test(path)) {
+		throw new Error('Path contains invalid characters');
+	}
+
+	// Validate each path segment
+	const segments = path.split('/');
+	for (const segment of segments) {
+		// Skip empty segments (consecutive slashes)
+		if (segment.length === 0) {
+			continue;
+		}
+
+		// Prohibit . and .. as path segments
+		if (segment === '.' || segment === '..') {
+			throw new Error('Invalid path segment');
+		}
+
+		// Check segment length
+		if (segment.length > 255) {
+			throw new Error('Path segment too long (maximum 255 characters)');
+		}
+	}
+}
+
 export function make_resource_path(request: Request): string {
 	const url = new URL(request.url);
 	const normalized = url.pathname.replace(/\/+/g, '/'); // 合并重复斜杠，避免 "//file" 导致路径解析异常
@@ -12,7 +74,14 @@ export function make_resource_path(request: Request): string {
 		: sliced === 'webdav'
 			? ''
 			: sliced;
-	return decodeURIComponent(withoutPrefix);
+
+	// Decode URI component
+	const decoded = decodeURIComponent(withoutPrefix);
+
+	// Validate path for security
+	validatePath(decoded);
+
+	return decoded;
 }
 
 export async function* listAll(bucket: R2Bucket, prefix: string) {
