@@ -75,8 +75,13 @@ export function make_resource_path(request: Request): string {
 			? ''
 			: sliced;
 
-	// Decode URI component
-	const decoded = decodeURIComponent(withoutPrefix);
+	// Decode URI component，捕获非法编码避免抛出 500
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(withoutPrefix);
+	} catch {
+		throw new Error('Invalid path encoding');
+	}
 
 	// Validate path for security
 	validatePath(decoded);

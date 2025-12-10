@@ -1,7 +1,7 @@
 // 文件名：src/utils/auth.ts
 import type { Env, AuthContext } from '../types';
 import { verifyPassword } from './crypto';
-import { verifyToken, extractToken, generateAccessToken, generateRefreshToken, type JWTPayload } from './jwt';
+import { verifyToken, extractToken, generateAccessToken, generateRefreshToken } from './jwt';
 import { checkRateLimit, resetRateLimit, getClientIdentifier, LOGIN_RATE_LIMIT } from './rateLimit';
 
 /**
@@ -91,17 +91,14 @@ async function authenticateBasic(authHeader: string, env: Env, request: Request)
 			return null;
 		}
 
-		// Rate limiting for login attempts
-		const identifier = `login:${username}:${getClientIdentifier(request)}`;
-		const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, identifier, LOGIN_RATE_LIMIT);
-
-		if (!rateLimit.allowed) {
-			// Rate limited - block the request
+		// Rate limiting for login attempts（多粒度：IP / 用户名 / 组合，防止绕过）
+		const rateLimitResult = await enforceLoginRateLimit(env, username, request);
+		if (!rateLimitResult.allowed) {
 			return null;
 		}
 
-		// Verify password hash
-		const isValid = await verifyPassword(password, env.PASSWORD_HASH);
+		// Verify password（优先哈希，兼容旧版明文）
+		const isValid = await verifyPasswordWithFallback(password, env);
 
 		if (!isValid) {
 			// Invalid password - don't reset rate limit
@@ -109,7 +106,7 @@ async function authenticateBasic(authHeader: string, env: Env, request: Request)
 		}
 
 		// Successful authentication - reset rate limit
-		await resetRateLimit(env.RATE_LIMIT_KV, identifier);
+		await resetLoginRateLimits(env, username, request);
 
 		return {
 			userId: username,
@@ -134,7 +131,7 @@ async function authenticateBasic(authHeader: string, env: Env, request: Request)
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
 	try {
 		// Parse request body
-		const body = await request.json<{ username: string; password: string }>();
+		const body = await safeJson<{ username: string; password: string }>(request);
 		const { username, password } = body;
 
 		if (!username || !password) {
@@ -144,12 +141,10 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 			});
 		}
 
-		// Rate limiting
-		const identifier = `login:${username}:${getClientIdentifier(request)}`;
-		const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, identifier, LOGIN_RATE_LIMIT);
-
+		// Rate limiting（IP + 用户名 + 组合）
+		const rateLimit = await enforceLoginRateLimit(env, username, request, true);
 		if (!rateLimit.allowed) {
-			const retryAfter = rateLimit.blockedUntil ? Math.ceil((rateLimit.blockedUntil - Date.now()) / 1000) : 3600;
+			const retryAfter = rateLimit.retryAfter ?? 3600;
 			return new Response(JSON.stringify({ error: 'Too many login attempts' }), {
 				status: 429,
 				headers: {
@@ -168,7 +163,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 		}
 
 		// Verify password
-		const isValid = await verifyPassword(password, env.PASSWORD_HASH);
+		const isValid = await verifyPasswordWithFallback(password, env);
 		if (!isValid) {
 			return new Response(JSON.stringify({ error: 'Invalid credentials' }), {
 				status: 401,
@@ -177,7 +172,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 		}
 
 		// Success - reset rate limit
-		await resetRateLimit(env.RATE_LIMIT_KV, identifier);
+		await resetLoginRateLimits(env, username, request);
 
 		// Generate tokens
 		const accessToken = await generateAccessToken(username, env.JWT_SECRET);
@@ -196,6 +191,9 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 			}
 		);
 	} catch (error) {
+		if (error instanceof Response) {
+			return error; // safeJson 返回的 400
+		}
 		console.error('Login error:', error);
 		return new Response(JSON.stringify({ error: 'Internal server error' }), {
 			status: 500,
@@ -217,7 +215,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 export async function handleRefresh(request: Request, env: Env): Promise<Response> {
 	try {
 		// Parse request body
-		const body = await request.json<{ refreshToken: string }>();
+		const body = await safeJson<{ refreshToken: string }>(request);
 		const { refreshToken } = body;
 
 		if (!refreshToken) {
@@ -250,6 +248,9 @@ export async function handleRefresh(request: Request, env: Env): Promise<Respons
 			}
 		);
 	} catch (error) {
+		if (error instanceof Response) {
+			return error; // safeJson 返回的 400
+		}
 		console.error('Refresh error:', error);
 		return new Response(JSON.stringify({ error: 'Internal server error' }), {
 			status: 500,
@@ -274,4 +275,97 @@ export function createUnauthorizedResponse(message = 'Unauthorized'): Response {
 			'Content-Type': 'text/plain',
 		},
 	});
+}
+
+/**
+ * 尝试解析 JSON，解析失败返回 400 而非 500
+ */
+async function safeJson<T>(request: Request): Promise<T> {
+	try {
+		return await request.json<T>();
+	} catch {
+		throw new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+}
+
+/**
+ * 登录限流：同时对 IP、用户名、组合键进行限制，任一超限则拦截
+ */
+async function enforceLoginRateLimit(
+	env: Env,
+	username: string,
+	request: Request,
+	returnDetail = false,
+): Promise<{ allowed: boolean; retryAfter?: number }> {
+	const clientId = getClientIdentifier(request);
+	const keys = [
+		`login:ip:${clientId}`,
+		`login:user:${username}`,
+		`login:user-ip:${username}:${clientId}`,
+	];
+
+	let blockedUntil: number | undefined;
+	let blocked = false;
+
+	for (const key of keys) {
+		const result = await checkRateLimit(env.RATE_LIMIT_KV, key, LOGIN_RATE_LIMIT);
+		if (!result.allowed) {
+			blocked = true;
+			// 取最大阻塞时间，确保返回合理的 Retry-After
+			if (result.blockedUntil) {
+				blockedUntil = Math.max(blockedUntil ?? 0, result.blockedUntil);
+			}
+			if (!returnDetail) {
+				return { allowed: false };
+			}
+		}
+	}
+
+	if (blockedUntil) {
+		const retryAfter = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
+		return { allowed: false, retryAfter };
+	}
+
+	if (blocked) {
+		return { allowed: false };
+	}
+
+	return { allowed: true };
+}
+
+/**
+ * 登录成功后重置所有相关限流键
+ */
+async function resetLoginRateLimits(env: Env, username: string, request: Request): Promise<void> {
+	const clientId = getClientIdentifier(request);
+	const keys = [
+		`login:ip:${clientId}`,
+		`login:user:${username}`,
+		`login:user-ip:${username}:${clientId}`,
+	];
+
+	await Promise.all(keys.map((key) => resetRateLimit(env.RATE_LIMIT_KV, key)));
+}
+
+/**
+ * 验证密码，优先使用 PBKDF2 哈希，回退到旧版明文字段
+ */
+async function verifyPasswordWithFallback(password: string, env: Env): Promise<boolean> {
+	if (env.PASSWORD_HASH) {
+		try {
+			return await verifyPassword(password, env.PASSWORD_HASH);
+		} catch {
+			// 如果哈希格式不合法，当作验证失败处理
+			return false;
+		}
+	}
+
+	if (env.PASSWORD) {
+		return password === env.PASSWORD;
+	}
+
+	return false;
 }

@@ -75,18 +75,12 @@ export async function handleWebDAV(request: Request, env: Env, authContext: Auth
 }
 
 function handleOptions(): Response {
+	// 仅声明 WebDAV 方法，CORS 由上层 setCORSHeaders 统一处理，避免通配符暴露
 	return new Response(null, {
 		status: 200,
 		headers: {
 			Allow: SUPPORT_METHODS.join(', '),
 			DAV: DAV_CLASS,
-			'Access-Control-Allow-Methods': SUPPORT_METHODS.join(', '),
-			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Headers': 'Authorization, Content-Type, Depth, Overwrite, Destination, Range',
-			'Access-Control-Expose-Headers':
-				'Content-Type, Content-Length, DAV, ETag, Last-Modified, Location, Date, Content-Range',
-			'Access-Control-Allow-Credentials': 'true',
-			'Access-Control-Max-Age': '86400',
 		},
 	});
 }
@@ -373,13 +367,12 @@ async function handleCopy(request: Request, bucket: R2Bucket, env: Env): Promise
 		const destFilename = destinationPath.split('/').pop() || '';
 		validateFileName(destFilename);
 
-		// Check quota for copy operation
+		// Check quota for copy operation（只校验净新增部分，避免覆盖误报）
 		const maxQuota = env.STORAGE_QUOTA ? parseInt(env.STORAGE_QUOTA, 10) : TOTAL_STORAGE_LIMIT;
-		await checkStorageQuota(env.QUOTA_KV, sourceObject.size, maxQuota);
-
-		// Check if destination already exists
 		const existingDest = await bucket.head(destinationPath);
 		const oldDestSize = existingDest?.size || 0;
+		const quotaDeltaForCheck = Math.max(0, sourceObject.size - oldDestSize);
+		await checkStorageQuota(env.QUOTA_KV, quotaDeltaForCheck, maxQuota);
 
 		await bucket.put(destinationPath, sourceObject.body, {
 			httpMetadata: sourceObject.httpMetadata,
@@ -387,10 +380,10 @@ async function handleCopy(request: Request, bucket: R2Bucket, env: Env): Promise
 		});
 
 		// Update quota (new file size - old file size if overwriting)
-		const quotaDelta = sourceObject.size - oldDestSize;
+		const quotaDeltaPersist = sourceObject.size - oldDestSize;
 		const fileDelta = existingDest ? 0 : 1;
-		if (quotaDelta !== 0 || fileDelta !== 0) {
-			await updateStorageQuota(env.QUOTA_KV, quotaDelta, fileDelta);
+		if (quotaDeltaPersist !== 0 || fileDelta !== 0) {
+			await updateStorageQuota(env.QUOTA_KV, quotaDeltaPersist, fileDelta);
 		}
 
 		return new Response('Created', { status: existingDest ? 204 : 201 });
@@ -423,6 +416,11 @@ async function handleMove(request: Request, bucket: R2Bucket, env: Env): Promise
 	const destinationUrl = new URL(destinationHeader);
 	const destinationPath = make_resource_path(new Request(destinationUrl));
 
+	// 防止自拷贝导致数据被删除
+	if (sourcePath === destinationPath) {
+		return new Response('Bad Request: source and destination are the same', { status: 400 });
+	}
+
 	try {
 		const sourceObject = await bucket.get(sourcePath);
 		if (!sourceObject) {
@@ -448,7 +446,7 @@ async function handleMove(request: Request, bucket: R2Bucket, env: Env): Promise
 		// Update quota
 		// Net change = (new dest size - old dest size) - source size
 		// File count change = +1 if dest was new, -1 for source deletion
-		const quotaDelta = sourceObject.size - oldDestSize - sourceObject.size;
+		const quotaDelta = -oldDestSize; // 删除源文件与写入目标相互抵消，仅扣除被覆盖的旧目标大小
 		const fileDelta = (existingDest ? 0 : 1) - 1; // +1 for new dest, -1 for deleted source
 		if (quotaDelta !== 0 || fileDelta !== 0) {
 			await updateStorageQuota(env.QUOTA_KV, quotaDelta, fileDelta);
