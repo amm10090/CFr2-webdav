@@ -1,7 +1,7 @@
 // 文件名：src/utils/auth.ts
-import type { Env, AuthContext } from '../types';
+import type { Env, AuthContext, TwoFactorData } from '../types';
 import { verifyPassword } from './crypto';
-import { verifyToken, extractToken, generateAccessToken, generateRefreshToken } from './jwt';
+import { verifyToken, extractToken, generateAccessToken, generateRefreshToken, generatePartialToken } from './jwt';
 import {
 	checkRateLimit,
 	getRateLimitStatus,
@@ -10,6 +10,8 @@ import {
 	getClientIdentifier,
 	LOGIN_RATE_LIMIT,
 } from './rateLimit';
+import { generateTOTPSecret, verifyTOTP, generateTOTPUri } from './totp';
+import { generateRecoveryCodes, hashRecoveryCode, verifyRecoveryCode } from './recoveryCodes';
 
 /**
  * Authenticate a request using hybrid authentication
@@ -181,7 +183,26 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 		// Success - reset rate limit
 		await resetLoginRateLimits(env, username, request);
 
-		// Generate tokens
+		// Check if 2FA is enabled
+		const twoFactorData = await get2FAData(env, username);
+		if (twoFactorData?.totpEnabled) {
+			// 2FA is enabled - return partial token
+			const partialToken = await generatePartialToken(username, env.JWT_SECRET);
+
+			return new Response(
+				JSON.stringify({
+					requires2FA: true,
+					partialToken,
+					message: 'Please provide your 2FA code to complete login',
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
+
+		// 2FA not enabled - generate full tokens
 		const accessToken = await generateAccessToken(username, env.JWT_SECRET);
 		const refreshToken = await generateRefreshToken(username, env.JWT_SECRET);
 
@@ -411,4 +432,360 @@ async function verifyPasswordWithFallback(password: string, env: Env): Promise<b
 	}
 
 	return false;
+}
+
+// ==================== Two-Factor Authentication Functions ====================
+
+/**
+ * Get TOTP KV key for a user
+ */
+function getTotpKey(username: string): string {
+	return `user:totp:${username}`;
+}
+
+/**
+ * Get 2FA data for a user from KV
+ */
+async function get2FAData(env: Env, username: string): Promise<TwoFactorData | null> {
+	const key = getTotpKey(username);
+	const data = await env.TOTP_KV.get(key);
+	if (!data) {
+		return null;
+	}
+	return JSON.parse(data) as TwoFactorData;
+}
+
+/**
+ * Save 2FA data for a user to KV
+ */
+async function save2FAData(env: Env, username: string, data: TwoFactorData): Promise<void> {
+	const key = getTotpKey(username);
+	await env.TOTP_KV.put(key, JSON.stringify(data));
+}
+
+/**
+ * Setup 2FA - Generate TOTP secret and recovery codes
+ *
+ * POST /auth/2fa/setup
+ * Requires authentication
+ *
+ * @returns TOTP secret, QR code URI, and recovery codes
+ */
+export async function handle2FASetup(request: Request, env: Env, authContext: AuthContext): Promise<Response> {
+	try {
+		const username = authContext.userId;
+
+		// Check if 2FA is already enabled
+		const existing2FA = await get2FAData(env, username);
+		if (existing2FA?.totpEnabled) {
+			return new Response(JSON.stringify({ error: '2FA is already enabled. Disable it first to re-setup.' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Generate TOTP secret
+		const totpSecret = await generateTOTPSecret();
+
+		// Generate QR code URI
+		const qrCodeUri = generateTOTPUri(totpSecret, username);
+
+		// Generate recovery codes
+		const recoveryCodes = generateRecoveryCodes(10);
+
+		// Hash recovery codes for storage
+		const hashedCodes = await Promise.all(recoveryCodes.map((code) => hashRecoveryCode(code)));
+
+		// Store 2FA data (not enabled yet - needs verification)
+		const data: TwoFactorData = {
+			totpSecret,
+			totpEnabled: false,
+			recoveryCodes: hashedCodes,
+		};
+		await save2FAData(env, username, data);
+
+		return new Response(
+			JSON.stringify({
+				secret: totpSecret,
+				qrCodeUri,
+				recoveryCodes,
+				message: 'Please verify the setup by entering a code from your authenticator app.',
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		console.error('2FA setup error:', error);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+}
+
+/**
+ * Verify and enable 2FA setup
+ *
+ * POST /auth/2fa/verify-setup
+ * Body: { code: string }
+ * Requires authentication
+ */
+export async function handle2FAVerifySetup(request: Request, env: Env, authContext: AuthContext): Promise<Response> {
+	try {
+		const username = authContext.userId;
+
+		const body = await safeJson<{ code: string }>(request);
+		const { code } = body;
+
+		if (!code || code.length !== 6) {
+			return new Response(JSON.stringify({ error: 'Invalid code format' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Get 2FA data
+		const data = await get2FAData(env, username);
+		if (!data) {
+			return new Response(JSON.stringify({ error: '2FA setup not initiated. Please run /auth/2fa/setup first.' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		if (data.totpEnabled) {
+			return new Response(JSON.stringify({ error: '2FA is already enabled' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Verify TOTP code
+		const isValid = await verifyTOTP(data.totpSecret, code);
+		if (!isValid) {
+			return new Response(JSON.stringify({ error: 'Invalid verification code' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Enable 2FA
+		data.totpEnabled = true;
+		data.enabledAt = Date.now();
+		await save2FAData(env, username, data);
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				message: '2FA has been successfully enabled',
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		if (error instanceof Response) {
+			return error;
+		}
+		console.error('2FA verify setup error:', error);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+}
+
+/**
+ * Disable 2FA
+ *
+ * POST /auth/2fa/disable
+ * Body: { password: string }
+ * Requires authentication
+ */
+export async function handle2FADisable(request: Request, env: Env, authContext: AuthContext): Promise<Response> {
+	try {
+		const username = authContext.userId;
+
+		const body = await safeJson<{ password: string }>(request);
+		const { password } = body;
+
+		if (!password) {
+			return new Response(JSON.stringify({ error: 'Password is required to disable 2FA' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Verify password
+		const isValid = await verifyPasswordWithFallback(password, env);
+		if (!isValid) {
+			return new Response(JSON.stringify({ error: 'Invalid password' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Delete 2FA data
+		const key = getTotpKey(username);
+		await env.TOTP_KV.delete(key);
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				message: '2FA has been disabled',
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		if (error instanceof Response) {
+			return error;
+		}
+		console.error('2FA disable error:', error);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+}
+
+/**
+ * Get 2FA status
+ *
+ * GET /auth/2fa/status
+ * Requires authentication
+ */
+export async function handle2FAStatus(request: Request, env: Env, authContext: AuthContext): Promise<Response> {
+	try {
+		const username = authContext.userId;
+
+		const data = await get2FAData(env, username);
+
+		return new Response(
+			JSON.stringify({
+				enabled: data?.totpEnabled ?? false,
+				enabledAt: data?.enabledAt,
+				lastUsedAt: data?.lastUsedAt,
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		console.error('2FA status error:', error);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+}
+
+/**
+ * Verify 2FA code during login
+ *
+ * POST /auth/2fa/verify
+ * Body: { partialToken: string, code: string, recoveryCode?: string }
+ *
+ * Completes the login process after password verification when 2FA is enabled
+ */
+export async function handle2FAVerify(request: Request, env: Env): Promise<Response> {
+	try {
+		const body = await safeJson<{ partialToken: string; code?: string; recoveryCode?: string }>(request);
+		const { partialToken, code, recoveryCode } = body;
+
+		if (!partialToken) {
+			return new Response(JSON.stringify({ error: 'Partial token is required' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Verify partial token
+		const payload = await verifyToken(partialToken, env.JWT_SECRET);
+		if (!payload || payload.type !== 'partial') {
+			return new Response(JSON.stringify({ error: 'Invalid or expired partial token' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		const username = payload.sub;
+
+		// Get 2FA data
+		const data = await get2FAData(env, username);
+		if (!data || !data.totpEnabled) {
+			return new Response(JSON.stringify({ error: '2FA is not enabled for this account' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		let verified = false;
+		let usedRecoveryCode = false;
+
+		// Try TOTP code first
+		if (code) {
+			verified = await verifyTOTP(data.totpSecret, code);
+		}
+
+		// Try recovery code if TOTP failed
+		if (!verified && recoveryCode) {
+			for (let i = 0; i < data.recoveryCodes.length; i++) {
+				const isValid = await verifyRecoveryCode(recoveryCode, data.recoveryCodes[i]);
+				if (isValid) {
+					verified = true;
+					usedRecoveryCode = true;
+					// Remove used recovery code
+					data.recoveryCodes.splice(i, 1);
+					await save2FAData(env, username, data);
+					break;
+				}
+			}
+		}
+
+		if (!verified) {
+			return new Response(JSON.stringify({ error: 'Invalid 2FA code or recovery code' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Update last used timestamp
+		data.lastUsedAt = Date.now();
+		await save2FAData(env, username, data);
+
+		// Generate full access tokens
+		const accessToken = await generateAccessToken(username, env.JWT_SECRET);
+		const refreshToken = await generateRefreshToken(username, env.JWT_SECRET);
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				accessToken,
+				refreshToken,
+				user: { username },
+				usedRecoveryCode,
+				remainingRecoveryCodes: data.recoveryCodes.length,
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		if (error instanceof Response) {
+			return error;
+		}
+		console.error('2FA verify error:', error);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
 }

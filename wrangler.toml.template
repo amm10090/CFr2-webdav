@@ -34,6 +34,7 @@ bucket_name = "$BUCKET_NAME"
 # Create these KV namespaces in your Cloudflare dashboard or via wrangler:
 #   wrangler kv:namespace create "RATE_LIMIT_KV"
 #   wrangler kv:namespace create "QUOTA_KV"
+#   wrangler kv:namespace create "TOTP_KV"  # Stage 2: Two-Factor Authentication
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
 id = "$RATE_LIMIT_KV_ID"
@@ -41,3 +42,8 @@ id = "$RATE_LIMIT_KV_ID"
 [[kv_namespaces]]
 binding = "QUOTA_KV"
 id = "$QUOTA_KV_ID"
+
+# Stage 2: TOTP Two-Factor Authentication
+[[kv_namespaces]]
+binding = "TOTP_KV"
+id = "$TOTP_KV_ID"

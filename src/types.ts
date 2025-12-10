@@ -19,6 +19,7 @@ export interface Env {
 	// KV Namespaces
 	RATE_LIMIT_KV: KVNamespace; // For rate limiting state
 	QUOTA_KV: KVNamespace; // For storage quota tracking
+	TOTP_KV: KVNamespace; // For TOTP 2FA data storage
 
 	// Configuration
 	WORKER_URL: string; // Worker's own URL for CORS validation
@@ -52,4 +53,35 @@ export interface WebDAVProps {
 	getetag: string | undefined;
 	getlastmodified: string;
 	resourcetype: string;
+}
+
+/**
+ * Two-Factor Authentication data structure
+ *
+ * Stored in TOTP_KV with key: `user:totp:${username}`
+ */
+export interface TwoFactorData {
+	// TOTP configuration
+	totpSecret: string; // Base32-encoded TOTP secret
+	totpEnabled: boolean; // Whether 2FA is currently enabled
+
+	// Recovery codes (hashed with PBKDF2, same as passwords)
+	recoveryCodes: string[]; // Array of hashed recovery codes
+
+	// Metadata
+	enabledAt?: number; // Timestamp when 2FA was enabled
+	lastUsedAt?: number; // Timestamp of last successful 2FA verification
+}
+
+/**
+ * Partial authentication token payload
+ *
+ * Issued after successful password verification but before 2FA verification.
+ * Only valid for accessing /auth/2fa/verify endpoint.
+ */
+export interface PartialAuthToken {
+	userId: string;
+	partial: true; // Indicates this is a partial token
+	iat: number; // Issued at timestamp
+	exp: number; // Expiration timestamp (short-lived: 5 minutes)
 }

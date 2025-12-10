@@ -18,7 +18,7 @@ export interface JWTPayload {
 	sub: string; // Subject (user identifier)
 	iat: number; // Issued at (Unix timestamp)
 	exp: number; // Expiration time (Unix timestamp)
-	type: 'access' | 'refresh'; // Token type
+	type: 'access' | 'refresh' | 'partial'; // Token type
 }
 
 /**
@@ -195,6 +195,33 @@ export async function generateRefreshToken(userId: string, secret: string): Prom
 		iat: now,
 		exp: now + REFRESH_TOKEN_LIFETIME,
 		type: 'refresh',
+	};
+
+	return createJWT(payload, secret);
+}
+
+/**
+ * Generate a partial JWT token for 2FA
+ *
+ * Partial tokens are short-lived (5 minutes) and issued after successful password
+ * verification but before 2FA completion. They can only be used to access the
+ * /auth/2fa/verify endpoint to complete the authentication process.
+ *
+ * @param userId - User identifier
+ * @param secret - Secret key for signing
+ * @returns JWT token string
+ *
+ * @example
+ * const partialToken = await generatePartialToken("user123", env.JWT_SECRET);
+ */
+export async function generatePartialToken(userId: string, secret: string): Promise<string> {
+	const now = Math.floor(Date.now() / 1000);
+
+	const payload: JWTPayload = {
+		sub: userId,
+		iat: now,
+		exp: now + 300, // 5 minutes
+		type: 'partial',
 	};
 
 	return createJWT(payload, secret);
