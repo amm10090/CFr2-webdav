@@ -6,12 +6,15 @@
 /* Background colors - Gray scale with dark mode */
 @source inline("{hover:,dark:,dark:hover:}bg-gray-{50,100,200,300,400,500,600,700,800,900,950}");
 @source inline("bg-{white,black}");
+@source inline("bg-white/{5,10,15,20,90}");
+@source inline("bg-black/{60,80}");
 
 /* Background colors - Other colors */
 @source inline("{hover:,dark:,dark:hover:}bg-blue-{50,100,400,500,600,700,800,900}");
 @source inline("{hover:,dark:}bg-red-{50,400,500,600,900}");
 @source inline("{hover:,dark:}bg-green-{500}");
-@source inline("{hover:,dark:}bg-amber-{400}");
+@source inline("{hover:,dark:}bg-emerald-{300}");
+@source inline("{hover:,dark:}bg-amber-{50,400}");
 @source inline("{hover:,dark:}bg-purple-{500}");
 @source inline("{hover:,dark:}bg-yellow-{500}");
 @source inline("{hover:,dark:}bg-indigo-{600}");
