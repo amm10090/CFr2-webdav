@@ -20,7 +20,7 @@ import {
 } from '../utils/auth';
 import { setCORSHeaders } from '../utils/cors';
 import { logger } from '../utils/logger';
-import { generateHTML } from '../utils/templates';
+import { generateHTML, generateLoginHTML } from '../utils/templates';
 
 export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 	try {
@@ -66,6 +66,29 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
 			return response;
 		}
 
+
+	// Handle login page (no authentication required)
+	if (url.pathname === '/login' && request.method === 'GET') {
+		// If already authenticated, redirect to home page
+		const authContext = await authenticate(request, env);
+		if (authContext) {
+			const response = new Response(null, {
+				status: 302,
+				headers: { Location: '/' },
+			});
+			setCORSHeaders(response, request, env);
+			return response;
+		}
+
+		// Show login page
+		const html = generateLoginHTML(Boolean(env.DEMO_MODE));
+		const response = new Response(html, {
+			status: 200,
+			headers: { 'Content-Type': 'text/html; charset=utf-8' },
+		});
+		setCORSHeaders(response, request, env);
+		return response;
+	}
 		// Handle root path with browser UI
 		if (url.pathname === '/' && request.method === 'GET') {
 			// Check if it's a browser request (has Accept: text/html)
@@ -74,7 +97,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
 				// Authenticate first
 				const authContext = await authenticate(request, env);
 				if (!authContext) {
-					const response = createUnauthorizedResponse();
+					// Redirect unauthenticated browser users to login page
+					const response = new Response(null, {
+						status: 302,
+						headers: { Location: '/login' },
+					});
 					setCORSHeaders(response, request, env);
 					return response;
 				}

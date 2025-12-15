@@ -70,10 +70,6 @@ export async function authenticate(request: Request, env: Env): Promise<AuthCont
 		return await authenticateJWT(authHeader, env);
 	}
 
-	// Fall back to Basic authentication
-	if (authHeader.startsWith('Basic ')) {
-		return await authenticateBasic(authHeader, env, request);
-	}
 
 	// Unknown authentication type
 	return null;
@@ -111,147 +107,6 @@ async function authenticateJWT(authHeader: string, env: Env): Promise<AuthContex
 }
 
 /**
- * Authenticate using Basic Auth with password hash verification
- *
- * @param authHeader - Authorization header value
- * @param env - Environment bindings
- * @param request - Request object for rate limiting
- * @returns AuthContext if valid credentials, null otherwise
- */
-async function authenticateBasic(authHeader: string, env: Env, request: Request): Promise<AuthContext | null> {
-	try {
-		const authValue = authHeader.split(' ')[1];
-		if (!authValue) {
-			return null;
-		}
-
-		const [username, password] = atob(authValue).split(':');
-		if (!username || !password) {
-			return null;
-		}
-
-		// Check username
-		if (username !== env.USERNAME) {
-			return null;
-		}
-
-		// Rate limiting for login attempts（多粒度：IP / 用户名 / 组合，防止绕过）
-		const rateLimitResult = await enforceLoginRateLimit(env, username, request);
-		if (!rateLimitResult.allowed) {
-			return null;
-		}
-
-		// Verify password（优先哈希，兼容旧版明文）
-		const isValid = await verifyPasswordWithFallback(password, env);
-
-		if (!isValid) {
-			// Invalid password - don't reset rate limit
-			return null;
-		}
-
-		// Check if 2FA is enabled - must verify TOTP/recovery code in Basic Auth
-		const twoFactorData = await get2FAData(env, username);
-		if (twoFactorData?.totpEnabled) {
-			// Extract 2FA credentials from custom headers
-			const totpCode = request.headers.get('X-TOTP-Code')?.trim();
-			const recoveryCode = request.headers.get('X-Recovery-Code')?.trim();
-
-			// Multi-tier 2FA rate limiting (IP / User / Combo) to prevent distributed attacks
-			// Similar to login rate limiting, but only increments combo key
-			const clientId = getClientIdentifier(request);
-			const keyIp = `2fa-basic:ip:${clientId}`;
-			const keyUser = `2fa-basic:user:${username}`;
-			const keyCombo = `2fa-basic:user-ip:${username}:${clientId}`;
-
-			// Phase 1: Read-only check all keys
-			const [ipStatus, userStatus, comboStatus] = await Promise.all([
-				getRateLimitStatus(env.RATE_LIMIT_KV, keyIp, TWO_FA_VERIFY_RATE_LIMIT),
-				getRateLimitStatus(env.RATE_LIMIT_KV, keyUser, TWO_FA_VERIFY_RATE_LIMIT),
-				getRateLimitStatus(env.RATE_LIMIT_KV, keyCombo, TWO_FA_VERIFY_RATE_LIMIT),
-			]);
-
-			// If any key is already blocked, reject immediately
-			if (![ipStatus, userStatus, comboStatus].every((s) => s.allowed)) {
-				return null;
-			}
-
-			// Phase 2: Increment only combo key
-			const comboCheck = await checkRateLimit(env.RATE_LIMIT_KV, keyCombo, TWO_FA_VERIFY_RATE_LIMIT);
-			if (!comboCheck.allowed) {
-				// Phase 3: Propagate block to related keys
-				await Promise.all([
-					blockIdentifier(env.RATE_LIMIT_KV, keyIp, TWO_FA_VERIFY_RATE_LIMIT),
-					blockIdentifier(env.RATE_LIMIT_KV, keyUser, TWO_FA_VERIFY_RATE_LIMIT),
-				]);
-				return null;
-			}
-
-			// Require at least one 2FA credential
-			if (!totpCode && !recoveryCode) {
-				// No 2FA credentials provided - authentication fails
-				// Rate limit attempt has been counted
-				return null;
-			}
-
-			let verified = false;
-			let usedRecoveryCode = false;
-
-			// Try TOTP code first
-			if (totpCode) {
-				verified = await verifyTOTP(twoFactorData.totpSecret, totpCode);
-			}
-
-			// Try recovery code if TOTP failed or not provided
-			if (!verified && recoveryCode) {
-				for (let i = 0; i < twoFactorData.recoveryCodes.length; i++) {
-					const isValid = await verifyRecoveryCode(recoveryCode, twoFactorData.recoveryCodes[i]);
-					if (isValid) {
-						verified = true;
-						usedRecoveryCode = true;
-						// Remove used recovery code
-						twoFactorData.recoveryCodes.splice(i, 1);
-						break;
-					}
-				}
-			}
-
-			if (!verified) {
-				// 2FA verification failed
-				return null;
-			}
-
-			// Update 2FA metadata
-			twoFactorData.lastUsedAt = Date.now();
-			await save2FAData(env, username, twoFactorData);
-
-			// Reset all 2FA rate limit keys and login rate limits on successful authentication
-			await Promise.all([
-				resetRateLimit(env.RATE_LIMIT_KV, keyIp),
-				resetRateLimit(env.RATE_LIMIT_KV, keyUser),
-				resetRateLimit(env.RATE_LIMIT_KV, keyCombo),
-			]);
-			await resetLoginRateLimits(env, username, request);
-
-			return {
-				userId: username,
-				authenticated: true,
-			};
-		}
-
-		// 2FA not enabled - password verification is sufficient
-		// Reset login rate limits on successful authentication
-		await resetLoginRateLimits(env, username, request);
-
-		return {
-			userId: username,
-			authenticated: true,
-		};
-	} catch {
-		// Invalid base64 or other parsing error
-		return null;
-	}
-}
-
 /**
  * Handle login request to generate JWT tokens
  *
@@ -413,9 +268,10 @@ export async function handleRefresh(request: Request, env: Env): Promise<Respons
 }
 
 /**
- * Create an unauthorized (401) response
+ * Create an unauthorized (401) response without WWW-Authenticate header.
  *
- * Includes WWW-Authenticate header for Basic auth clients.
+ * This prevents browsers from showing native Basic Auth popups.
+ * Clients should handle authentication through the custom login page.
  *
  * @param message - Optional error message
  * @returns 401 Response
@@ -424,7 +280,6 @@ export function createUnauthorizedResponse(message = 'Unauthorized'): Response {
 	return new Response(message, {
 		status: 401,
 		headers: {
-			'WWW-Authenticate': 'Basic realm="CFr2-WebDAV"',
 			'Content-Type': 'text/plain',
 		},
 	});

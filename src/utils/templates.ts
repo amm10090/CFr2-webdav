@@ -863,3 +863,447 @@ export function generateErrorHTML(title: string, message: string): string {
       </html>
     `;
 }
+
+/**
+ * Generate login page with modern authentication
+ * - Username/Password → JWT tokens
+ * - 2FA verification support
+ * - WebAuthn Passkey authentication
+ * - Token auto-refresh and session management
+ */
+export function generateLoginHTML(allowDemo = false): string {
+	const SESSION_KEY = 'app_session';
+
+	return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - R2 WebDAV</title>
+  <style>${TAILWIND_CSS}</style>
+  <style>
+    * { box-sizing: border-box; }
+    .animate-fade-in { animation: fade 0.3s ease-in; }
+    @keyframes fade { from {opacity: 0; transform: translateY(-10px);} to {opacity: 1; transform: translateY(0);} }
+    .btn-primary { @apply w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-lg transition duration-200; }
+    .btn-secondary { @apply w-full py-3 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-800 dark:text-gray-100 font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition duration-200; }
+    .input-field { @apply w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-100">
+  <div class="min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-5xl w-full grid lg:grid-cols-2 gap-8">
+      <!-- Left Panel: Branding -->
+      <div class="hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-3xl p-10 shadow-2xl">
+        <div>
+          <div class="flex items-center space-x-3 mb-6">
+            <div class="bg-white/15 backdrop-blur-sm p-3 rounded-2xl shadow-lg">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M4 14v4c0 .55.45 1 1 1h3v-5H4Zm0-4h4V5H5c-.55 0-1 .45-1 1v4Zm6 0h4V5h-4v5Zm0 10h4v-5h-4v5Zm6 0h3c.55 0 1-.45 1-1v-4h-4v5Zm0-10h4V6c0-.55-.45-1-1-1h-3v5Z"/>
+              </svg>
+            </div>
+            <div>
+              <p class="text-sm opacity-90 font-medium">R2 WebDAV</p>
+              <h2 class="text-3xl font-bold tracking-tight">Secure Login</h2>
+            </div>
+          </div>
+          <p class="text-white/90 leading-relaxed text-lg">
+            Modern authentication with JWT, 2FA, and Passkey support. No browser popups, seamless token refresh.
+          </p>
+        </div>
+        <div class="space-y-3 text-sm text-white/85">
+          <p class="flex items-center space-x-3">
+            <span class="flex-shrink-0 w-2 h-2 bg-emerald-300 rounded-full"></span>
+            <span>Bearer Token authentication (no Basic Auth)</span>
+          </p>
+          <p class="flex items-center space-x-3">
+            <span class="flex-shrink-0 w-2 h-2 bg-emerald-300 rounded-full"></span>
+            <span>2FA & Passkey security</span>
+          </p>
+          <p class="flex items-center space-x-3">
+            <span class="flex-shrink-0 w-2 h-2 bg-emerald-300 rounded-full"></span>
+            <span>Automatic session refresh</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Right Panel: Login Form -->
+      <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl p-10 border border-gray-100 dark:border-gray-800 animate-fade-in">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Welcome Back</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-8">Sign in with your credentials or use Passkey.</p>
+
+        <!-- Step 1: Username/Password -->
+        <div id="step-password">
+          <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Username</label>
+          <input
+            id="login-username"
+            type="text"
+            class="input-field mb-4"
+            placeholder="Enter your username"
+            autocomplete="username"
+          />
+
+          <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            class="input-field mb-6"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+          />
+
+          <button id="btn-login" class="btn-primary">
+            Sign In
+          </button>
+        </div>
+
+        <!-- Step 2: 2FA Verification -->
+        <div id="step-2fa" class="hidden">
+          <div class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+            <p class="text-sm text-blue-800 dark:text-blue-300">
+              Two-factor authentication is enabled. Please enter your TOTP code or recovery code.
+            </p>
+          </div>
+
+          <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">TOTP Code</label>
+          <input
+            id="login-totp"
+            type="text"
+            class="input-field mb-4"
+            placeholder="6-digit code"
+            maxlength="6"
+            autocomplete="one-time-code"
+          />
+
+          <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Recovery Code (optional)</label>
+          <input
+            id="login-recovery"
+            type="text"
+            class="input-field mb-6"
+            placeholder="XXXX-XXXX"
+            autocomplete="off"
+          />
+
+          <button id="btn-2fa" class="btn-primary">
+            Verify & Continue
+          </button>
+
+          <button id="btn-back" class="btn-secondary mt-3">
+            Back to Login
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="relative my-8">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-200 dark:border-gray-700"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-4 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400">or</span>
+          </div>
+        </div>
+
+        <!-- Passkey Login -->
+        <button id="btn-passkey" class="btn-secondary">
+          <svg class="inline w-5 h-5 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M15 7a2 2 0 1 1 2-2 2 2 0 0 1-2 2Zm0 0v9m0 0-3 3m3-3 3 3"/>
+          </svg>
+          Sign in with Passkey
+        </button>
+
+        <!-- Error Display -->
+        <div id="login-error" class="hidden mt-6 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4"></div>
+
+        <!-- Demo Mode Info -->
+        ${
+					allowDemo
+						? `
+        <div class="mt-6 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <p class="text-xs text-amber-800 dark:text-amber-300">
+            Demo mode is available. The application can simulate responses without authentication.
+          </p>
+        </div>
+        `
+						: ''
+				}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SESSION_KEY = '${SESSION_KEY}';
+
+    // Session Management
+    const saveSession = (session) => {
+      try {
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session || {}));
+      } catch (e) {
+        console.error('Failed to save session:', e);
+      }
+    };
+
+    // Error Handling
+    const showError = (message) => {
+      const errorBox = document.getElementById('login-error');
+      if (errorBox) {
+        errorBox.textContent = message;
+        errorBox.classList.remove('hidden');
+      }
+    };
+
+    const hideError = () => {
+      const errorBox = document.getElementById('login-error');
+      if (errorBox) {
+        errorBox.classList.add('hidden');
+      }
+    };
+
+    // State Management
+    let partialToken = '';
+    let currentUsername = '';
+
+    // Step 1: Username/Password Login
+    document.getElementById('btn-login')?.addEventListener('click', async () => {
+      hideError();
+
+      const username = document.getElementById('login-username')?.value.trim();
+      const password = document.getElementById('login-password')?.value.trim();
+
+      if (!username || !password) {
+        showError('Please enter both username and password.');
+        return;
+      }
+
+      try {
+        const response = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.error || 'Login failed. Please check your credentials.');
+          return;
+        }
+
+        // Check if 2FA is required
+        if (data.requires2FA) {
+          partialToken = data.partialToken;
+          currentUsername = username;
+
+          // Switch to 2FA step
+          document.getElementById('step-password')?.classList.add('hidden');
+          document.getElementById('step-2fa')?.classList.remove('hidden');
+          document.getElementById('login-totp')?.focus();
+          return;
+        }
+
+        // No 2FA required - save tokens and redirect
+        saveSession({
+          url: window.location.origin,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          expiresAt: Date.now() + (data.expiresIn || 900) * 1000,
+          user: data.user || { username },
+        });
+
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Login error:', error);
+        showError('Unable to connect to server. Please try again.');
+      }
+    });
+
+    // Handle Enter key for password input
+    document.getElementById('login-password')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btn-login')?.click();
+      }
+    });
+
+    // Step 2: 2FA Verification
+    document.getElementById('btn-2fa')?.addEventListener('click', async () => {
+      hideError();
+
+      const totpCode = document.getElementById('login-totp')?.value.trim();
+      const recoveryCode = document.getElementById('login-recovery')?.value.trim();
+
+      if (!partialToken) {
+        showError('Session expired. Please log in again.');
+        return;
+      }
+
+      if (!totpCode && !recoveryCode) {
+        showError('Please enter either a TOTP code or recovery code.');
+        return;
+      }
+
+      try {
+        const response = await fetch('/auth/2fa/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            partialToken,
+            code: totpCode,
+            recoveryCode: recoveryCode || undefined,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.error || '2FA verification failed. Please try again.');
+          return;
+        }
+
+        // Save tokens and redirect
+        saveSession({
+          url: window.location.origin,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          expiresAt: Date.now() + (data.expiresIn || 900) * 1000,
+          user: data.user || { username: currentUsername },
+        });
+
+        window.location.href = '/';
+      } catch (error) {
+        console.error('2FA verification error:', error);
+        showError('Unable to verify 2FA. Please try again.');
+      }
+    });
+
+    // Handle Enter key for TOTP input
+    document.getElementById('login-totp')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btn-2fa')?.click();
+      }
+    });
+
+    // Back to login button
+    document.getElementById('btn-back')?.addEventListener('click', () => {
+      partialToken = '';
+      currentUsername = '';
+      document.getElementById('step-2fa')?.classList.add('hidden');
+      document.getElementById('step-password')?.classList.remove('hidden');
+      document.getElementById('login-totp').value = '';
+      document.getElementById('login-recovery').value = '';
+      hideError();
+    });
+
+    // Step 3: WebAuthn Passkey Login
+    document.getElementById('btn-passkey')?.addEventListener('click', async () => {
+      hideError();
+
+      const username = document.getElementById('login-username')?.value.trim();
+
+      if (!username) {
+        showError('Please enter your username to use Passkey authentication.');
+        return;
+      }
+
+      try {
+        // Start passkey authentication
+        const startResponse = await fetch('/auth/passkey/authenticate/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+        });
+
+        const startData = await startResponse.json();
+
+        if (!startResponse.ok) {
+          showError(startData.error || 'Failed to initialize Passkey authentication.');
+          return;
+        }
+
+        // Prepare credential request options
+        const options = startData.options;
+
+        // Decode challenge from base64
+        options.challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
+
+        // Decode credential IDs if present
+        if (options.allowCredentials) {
+          options.allowCredentials = options.allowCredentials.map(cred => ({
+            ...cred,
+            id: Uint8Array.from(
+              atob(cred.id.replace(/-/g, '+').replace(/_/g, '/')),
+              c => c.charCodeAt(0)
+            ),
+          }));
+        }
+
+        // Request credential from browser
+        const credential = await navigator.credentials.get({ publicKey: options });
+
+        if (!credential) {
+          showError('Passkey authentication was cancelled.');
+          return;
+        }
+
+        // Encode credential response
+        const credentialData = {
+          id: credential.id,
+          rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+          type: credential.type,
+          response: {
+            authenticatorData: btoa(String.fromCharCode(...new Uint8Array(credential.response.authenticatorData))),
+            clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(credential.response.clientDataJSON))),
+            signature: btoa(String.fromCharCode(...new Uint8Array(credential.response.signature))),
+            userHandle: credential.response.userHandle
+              ? btoa(String.fromCharCode(...new Uint8Array(credential.response.userHandle)))
+              : null,
+          },
+          clientExtensionResults: credential.getClientExtensionResults(),
+        };
+
+        // Finish passkey authentication
+        const finishResponse = await fetch('/auth/passkey/authenticate/finish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            credential: credentialData,
+            challengeId: startData.challengeId,
+          }),
+        });
+
+        const finishData = await finishResponse.json();
+
+        if (!finishResponse.ok) {
+          showError(finishData.error || 'Passkey authentication failed.');
+          return;
+        }
+
+        // Save tokens and redirect
+        saveSession({
+          url: window.location.origin,
+          accessToken: finishData.accessToken,
+          refreshToken: finishData.refreshToken,
+          expiresAt: Date.now() + (finishData.expiresIn || 900) * 1000,
+          user: finishData.user || { username },
+        });
+
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Passkey error:', error);
+
+        if (error.name === 'NotAllowedError') {
+          showError('Passkey authentication was cancelled or not allowed.');
+        } else if (error.name === 'NotSupportedError') {
+          showError('Passkey authentication is not supported by your browser.');
+        } else {
+          showError('Passkey authentication failed. Please try another method.');
+        }
+      }
+    });
+
+    // Focus username field on load
+    document.getElementById('login-username')?.focus();
+  </script>
+</body>
+</html>
+`;
+}
