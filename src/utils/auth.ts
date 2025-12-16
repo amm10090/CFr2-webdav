@@ -1370,11 +1370,10 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 		await kv.put(storedKey, JSON.stringify(storedCredential));
 
 		// Reset rate limits on successful authentication
-		await Promise.all([
-			resetRateLimit(env.RATE_LIMIT_KV, keyIp),
-			resetRateLimit(env.RATE_LIMIT_KV, keyUser),
-			resetRateLimit(env.RATE_LIMIT_KV, keyCombo),
-		]);
+		const resetPromises = [resetRateLimit(env.RATE_LIMIT_KV, keyIp)];
+		if (keyUser) resetPromises.push(resetRateLimit(env.RATE_LIMIT_KV, keyUser));
+		if (keyCombo) resetPromises.push(resetRateLimit(env.RATE_LIMIT_KV, keyCombo));
+		await Promise.all(resetPromises);
 
 		// Generate JWT tokens
 		const accessToken = await generateAccessToken(username, env.JWT_SECRET);
