@@ -1262,19 +1262,6 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 
 		const kv = getAuthKV(env);
 
-		// Extract userHandle from credential response
-		const userHandle = (credential as any).response?.userHandle;
-		if (!userHandle) {
-			return new Response(JSON.stringify({ error: 'Missing userHandle in credential' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-
-		// Decode userHandle to get userId
-		const userHandleBytes = base64urlDecode(userHandle);
-		const userId = new TextDecoder().decode(userHandleBytes);
-
 		// Retrieve challenge
 		const challengeRecord = await getChallenge(kv, challengeId);
 		if (!challengeRecord) {
@@ -1284,8 +1271,24 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 			});
 		}
 
-		// If challenge has userId, verify it matches
-		if (challengeRecord.userId && challengeRecord.userId !== userId) {
+		// Normalize credential from client JSON format
+		const normalizedCredential = normalizeWebAuthnCredential(credential);
+
+		// Extract userHandle from normalized credential response
+		const userHandle = normalizedCredential.response?.userHandle;
+		if (!userHandle) {
+			return new Response(JSON.stringify({ error: 'Missing userHandle in credential' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// Decode userHandle to get userId
+		const userHandleBytes = userHandle instanceof Uint8Array ? userHandle : base64urlDecode(userHandle);
+		const userId = new TextDecoder().decode(userHandleBytes);
+
+		// Verify user matches
+		if (challengeRecord.userId !== userId) {
 			return new Response(JSON.stringify({ error: 'Challenge user mismatch' }), {
 				status: 403,
 				headers: { 'Content-Type': 'application/json' },
@@ -1348,9 +1351,6 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 				},
 			});
 		}
-
-		// Normalize credential from client JSON format
-		const normalizedCredential = normalizeWebAuthnCredential(credential);
 
 		// Get credential from storage
 		// Extract credential ID from response
@@ -1578,7 +1578,7 @@ function normalizeWebAuthnCredential(credential: any): any {
 	}
 
 	// Decode response fields
-	const fields = ['clientDataJSON', 'attestationObject', 'authenticatorData', 'signature'] as const;
+	const fields = ['clientDataJSON', 'attestationObject', 'authenticatorData', 'signature', 'userHandle'] as const;
 	for (const field of fields) {
 		const decoded = decodeField(normalized.response?.[field]);
 		if (decoded) {
