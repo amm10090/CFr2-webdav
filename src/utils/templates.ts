@@ -958,8 +958,8 @@ export function generateLoginHTML(): string {
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8 border border-gray-200 dark:border-gray-700">
         <!-- Logo & Brand -->
         <div class="flex flex-col items-center mb-8">
-          <div class="mb-3">
-            <img src="${LOGO_DATA_URL}" alt="Logo" style="width: 64px; height: 64px; object-fit: contain;" class="rounded-xl" />
+          <div class="mb-3 flex justify-center">
+            <img src="${LOGO_DATA_URL}" alt="Logo" style="width: 80px; height: auto; object-fit: contain; mix-blend-mode: multiply;" />
           </div>
           <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">R2 WebDAV</h2>
         </div>
