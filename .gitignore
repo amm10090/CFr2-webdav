@@ -187,3 +187,4 @@ docs/
 
 # Redis database dump
 dump.rdb
+wrangler.toml
