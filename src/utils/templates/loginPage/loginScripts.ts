@@ -7,6 +7,37 @@ export function generateLoginScript(sessionKey: string): string {
 	return `
     const SESSION_KEY = '${sessionKey}';
 
+    // Floating Label Logic
+    const initFloatingLabels = () => {
+      const inputs = document.querySelectorAll('.floating-label-container input');
+      inputs.forEach(input => {
+        const updateLabel = () => {
+          if (input.value) {
+            input.classList.add('has-value');
+          } else {
+            input.classList.remove('has-value');
+          }
+        };
+
+        // Initial check
+        updateLabel();
+
+        // Listen for changes
+        input.addEventListener('input', updateLabel);
+        input.addEventListener('change', updateLabel);
+
+        // Handle autofill
+        setTimeout(updateLabel, 100);
+      });
+    };
+
+    // Initialize on load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initFloatingLabels);
+    } else {
+      initFloatingLabels();
+    }
+
     // Session Management
     const saveSession = (session) => {
       try {
@@ -17,18 +48,54 @@ export function generateLoginScript(sessionKey: string): string {
     };
 
     // Error Handling
+    let errorAutoHideTimeout = null;
+    let errorHideAnimationTimeout = null;
+
     const showError = (message) => {
       const errorBox = document.getElementById('login-error');
-      if (errorBox) {
-        errorBox.textContent = message;
-        errorBox.classList.remove('hidden');
+      const errorText = document.getElementById('login-error-text');
+      if (errorBox && errorText) {
+        // Clear any existing timeouts
+        if (errorAutoHideTimeout) {
+          clearTimeout(errorAutoHideTimeout);
+        }
+        if (errorHideAnimationTimeout) {
+          clearTimeout(errorHideAnimationTimeout);
+        }
+
+        errorText.textContent = message;
+        errorBox.classList.remove('hidden', 'hide');
+        errorBox.classList.add('show');
+
+        // Remove animation class after animation completes
+        setTimeout(() => {
+          errorBox.classList.remove('show');
+        }, 600);
+
+        // Auto-hide after 5 seconds
+        errorAutoHideTimeout = setTimeout(() => {
+          hideError();
+        }, 5000);
       }
     };
 
     const hideError = () => {
       const errorBox = document.getElementById('login-error');
       if (errorBox) {
-        errorBox.classList.add('hidden');
+        // Clear auto-hide timeout if hiding manually
+        if (errorAutoHideTimeout) {
+          clearTimeout(errorAutoHideTimeout);
+          errorAutoHideTimeout = null;
+        }
+
+        errorBox.classList.remove('show');
+        errorBox.classList.add('hide');
+
+        // Hide element after animation completes
+        errorHideAnimationTimeout = setTimeout(() => {
+          errorBox.classList.add('hidden');
+          errorBox.classList.remove('hide');
+        }, 300);
       }
     };
 
@@ -42,7 +109,7 @@ export function generateLoginScript(sessionKey: string): string {
       const password = document.getElementById('login-password')?.value.trim();
 
       if (!username || !password) {
-        showError('Please enter both username and password.');
+        showError('请输入用户名和密码。');
         return;
       }
 
@@ -56,7 +123,7 @@ export function generateLoginScript(sessionKey: string): string {
         const data = await response.json();
 
         if (!response.ok) {
-          showError(data.error || 'Login failed. Please check your credentials.');
+          showError(data.error || '登录失败，请检查您的凭据。');
           return;
         }
 
@@ -84,7 +151,7 @@ export function generateLoginScript(sessionKey: string): string {
         window.location.href = '/';
       } catch (error) {
         console.error('Login error:', error);
-        showError('Unable to connect to server. Please try again.');
+        showError('无法连接到服务器，请重试。');
       }
     });
 
@@ -103,12 +170,12 @@ export function generateLoginScript(sessionKey: string): string {
       const recoveryCode = document.getElementById('login-recovery')?.value.trim();
 
       if (!partialToken) {
-        showError('Session expired. Please log in again.');
+        showError('会话已过期，请重新登录。');
         return;
       }
 
       if (!totpCode && !recoveryCode) {
-        showError('Please enter either a TOTP code or recovery code.');
+        showError('请输入 TOTP 验证码或恢复代码。');
         return;
       }
 
@@ -126,7 +193,7 @@ export function generateLoginScript(sessionKey: string): string {
         const data = await response.json();
 
         if (!response.ok) {
-          showError(data.error || '2FA verification failed. Please try again.');
+          showError(data.error || '双因素验证失败，请重试。');
           return;
         }
 
@@ -142,7 +209,7 @@ export function generateLoginScript(sessionKey: string): string {
         window.location.href = '/';
       } catch (error) {
         console.error('2FA verification error:', error);
-        showError('Unable to verify 2FA. Please try again.');
+        showError('无法验证双因素认证，请重试。');
       }
     });
 
@@ -168,64 +235,69 @@ export function generateLoginScript(sessionKey: string): string {
     document.getElementById('btn-passkey')?.addEventListener('click', async () => {
       hideError();
 
-      const username = document.getElementById('login-username')?.value.trim();
-
-      if (!username) {
-        showError('Please enter your username to use Passkey authentication.');
-        return;
-      }
-
       try {
         // Start passkey authentication
         const startResponse = await fetch('/auth/passkey/authenticate/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username }),
+          body: JSON.stringify({ username: '' }),
         });
 
         const startData = await startResponse.json();
 
         if (!startResponse.ok) {
-          showError(startData.error || 'Failed to initialize Passkey authentication.');
+          showError(startData.error || '无法初始化 Passkey 认证。');
           return;
         }
 
         // Prepare credential request options
         const options = startData.options;
 
-        // Decode challenge from base64
-        options.challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
+        // Decode challenge from base64url
+        const challengeB64 = options.challenge.replace(/-/g, '+').replace(/_/g, '/');
+        const paddedChallenge = challengeB64 + '='.repeat((4 - challengeB64.length % 4) % 4);
+        options.challenge = Uint8Array.from(atob(paddedChallenge), c => c.charCodeAt(0));
 
         // Decode credential IDs if present
         if (options.allowCredentials) {
-          options.allowCredentials = options.allowCredentials.map(cred => ({
-            ...cred,
-            id: Uint8Array.from(
-              atob(cred.id.replace(/-/g, '+').replace(/_/g, '/')),
-              c => c.charCodeAt(0)
-            ),
-          }));
+          options.allowCredentials = options.allowCredentials.map(cred => {
+            const credIdB64 = cred.id.replace(/-/g, '+').replace(/_/g, '/');
+            const paddedCredId = credIdB64 + '='.repeat((4 - credIdB64.length % 4) % 4);
+            return {
+              ...cred,
+              id: Uint8Array.from(atob(paddedCredId), c => c.charCodeAt(0)),
+            };
+          });
         }
 
         // Request credential from browser
         const credential = await navigator.credentials.get({ publicKey: options });
 
         if (!credential) {
-          showError('Passkey authentication was cancelled.');
+          showError('Passkey 认证已取消。');
           return;
         }
 
-        // Encode credential response
+        // Encode credential response using base64url
+        const arrayBufferToBase64url = (buffer) => {
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=/g, '');
+        };
+
         const credentialData = {
           id: credential.id,
-          rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+          rawId: arrayBufferToBase64url(credential.rawId),
           type: credential.type,
           response: {
-            authenticatorData: btoa(String.fromCharCode(...new Uint8Array(credential.response.authenticatorData))),
-            clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(credential.response.clientDataJSON))),
-            signature: btoa(String.fromCharCode(...new Uint8Array(credential.response.signature))),
+            authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+            clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+            signature: arrayBufferToBase64url(credential.response.signature),
             userHandle: credential.response.userHandle
-              ? btoa(String.fromCharCode(...new Uint8Array(credential.response.userHandle)))
+              ? arrayBufferToBase64url(credential.response.userHandle)
               : null,
           },
           clientExtensionResults: credential.getClientExtensionResults(),
@@ -244,7 +316,7 @@ export function generateLoginScript(sessionKey: string): string {
         const finishData = await finishResponse.json();
 
         if (!finishResponse.ok) {
-          showError(finishData.error || 'Passkey authentication failed.');
+          showError(finishData.error || 'Passkey 认证失败。');
           return;
         }
 
@@ -262,11 +334,11 @@ export function generateLoginScript(sessionKey: string): string {
         console.error('Passkey error:', error);
 
         if (error.name === 'NotAllowedError') {
-          showError('Passkey authentication was cancelled or not allowed.');
+          showError('Passkey 认证已取消或不被允许。');
         } else if (error.name === 'NotSupportedError') {
-          showError('Passkey authentication is not supported by your browser.');
+          showError('您的浏览器不支持 Passkey 认证。');
         } else {
-          showError('Passkey authentication failed. Please try another method.');
+          showError('Passkey 认证失败，请尝试其他方法。');
         }
       }
     });
