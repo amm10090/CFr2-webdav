@@ -21,7 +21,7 @@ async function generateHash(password) {
 			hash: 'SHA-256',
 		},
 		key,
-		256
+		256,
 	);
 
 	const hashArray = new Uint8Array(derivedBits);

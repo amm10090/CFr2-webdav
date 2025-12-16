@@ -46,10 +46,7 @@ function fromBase64(base64: string): Uint8Array {
  * const hashed = await hashPassword("mySecurePassword123");
  * // Returns: "v1:100000:MTIzNDU2Nzg5MDEyMzQ1Ng==:abcdef..."
  */
-export async function hashPassword(
-	password: string,
-	iterations: number = DEFAULT_PBKDF2_ITERATIONS
-): Promise<string> {
+export async function hashPassword(password: string, iterations: number = DEFAULT_PBKDF2_ITERATIONS): Promise<string> {
 	// Validate iterations to prevent DoS and ensure security
 	if (iterations < MIN_PBKDF2_ITERATIONS) {
 		throw new Error(`PBKDF2 iterations must be at least ${MIN_PBKDF2_ITERATIONS} for security`);
@@ -62,13 +59,9 @@ export async function hashPassword(
 	const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
 
 	// Import the password as a key
-	const passwordKey = await crypto.subtle.importKey(
-		'raw',
-		TEXT_ENCODER.encode(password),
-		'PBKDF2',
-		false,
-		['deriveBits']
-	);
+	const passwordKey = await crypto.subtle.importKey('raw', TEXT_ENCODER.encode(password), 'PBKDF2', false, [
+		'deriveBits',
+	]);
 
 	// Derive the hash using PBKDF2
 	const derivedBits = await crypto.subtle.deriveBits(
@@ -79,7 +72,7 @@ export async function hashPassword(
 			hash: 'SHA-256',
 		},
 		passwordKey,
-		HASH_LENGTH * 8 // bits
+		HASH_LENGTH * 8, // bits
 	);
 
 	const hashArray = new Uint8Array(derivedBits);
@@ -127,13 +120,9 @@ export async function verifyPassword(password: string, storedHash: string): Prom
 	const storedHashBytes = fromBase64(hashB64);
 
 	// Derive a hash from the provided password using the stored salt
-	const passwordKey = await crypto.subtle.importKey(
-		'raw',
-		TEXT_ENCODER.encode(password),
-		'PBKDF2',
-		false,
-		['deriveBits']
-	);
+	const passwordKey = await crypto.subtle.importKey('raw', TEXT_ENCODER.encode(password), 'PBKDF2', false, [
+		'deriveBits',
+	]);
 
 	const derivedBits = await crypto.subtle.deriveBits(
 		{
@@ -143,7 +132,7 @@ export async function verifyPassword(password: string, storedHash: string): Prom
 			hash: 'SHA-256',
 		},
 		passwordKey,
-		storedHashBytes.length * 8
+		storedHashBytes.length * 8,
 	);
 
 	const candidateHash = new Uint8Array(derivedBits);

@@ -84,7 +84,7 @@ export const API_RATE_LIMIT: RateLimitConfig = {
 export async function checkRateLimit(
 	kv: KVNamespace,
 	identifier: string,
-	config: RateLimitConfig = LOGIN_RATE_LIMIT
+	config: RateLimitConfig = LOGIN_RATE_LIMIT,
 ): Promise<RateLimitResult> {
 	const key = `ratelimit:${identifier}`;
 	const now = Date.now();
@@ -192,7 +192,7 @@ export async function resetRateLimit(kv: KVNamespace, identifier: string): Promi
 export async function getRateLimitStatus(
 	kv: KVNamespace,
 	identifier: string,
-	config: RateLimitConfig = LOGIN_RATE_LIMIT
+	config: RateLimitConfig = LOGIN_RATE_LIMIT,
 ): Promise<RateLimitResult> {
 	const key = `ratelimit:${identifier}`;
 	const now = Date.now();
@@ -246,7 +246,7 @@ export async function getRateLimitStatus(
 export async function blockIdentifier(
 	kv: KVNamespace,
 	identifier: string,
-	config: RateLimitConfig = LOGIN_RATE_LIMIT
+	config: RateLimitConfig = LOGIN_RATE_LIMIT,
 ): Promise<void> {
 	const key = `ratelimit:${identifier}`;
 	const now = Date.now();

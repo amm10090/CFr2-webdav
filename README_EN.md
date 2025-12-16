@@ -17,12 +17,14 @@ Enterprise-grade WebDAV server built on Cloudflare Workers and R2 Storage, with 
 ## Features
 
 ### File Management
+
 - Fully compatible with WebDAV protocol, supports all standard clients
 - File upload, download, delete, move, and copy operations
 - Directory creation and browsing
 - Modern built-in Web file management interface
 
 ### Technical Architecture
+
 - Built on Cloudflare Workers edge computing for global accelerated access
 - Uses Cloudflare R2 as storage backend (generous free tier)
 - Serverless, automatic scaling
@@ -145,24 +147,24 @@ In your forked repository: **Settings → Secrets and variables → Actions → 
 
 Add the following Secrets (all required):
 
-| Secret Name | Description | Example |
-|------------|-------------|---------|
-| `CLOUDFLARE_API_TOKEN` | API Token | `abc123...` |
-| `CLOUDFLARE_ACCOUNT_ID` | Account ID | `1234567890abcdef...` |
-| `BUCKET_NAME` | R2 bucket name | `my-webdav-storage` |
-| `USERNAME` | Admin username | `admin` |
-| `PASSWORD_HASH` | Password hash from step 5 | `v1:100000:...` |
-| `JWT_SECRET` | JWT secret from step 5 | `KF/+klyH...` |
-| `WORKER_URL` | Worker access URL | `https://webdav.example.com` |
-| `RATE_LIMIT_KV_ID` | Rate limit KV namespace ID | `0e0a3861...` |
-| `QUOTA_KV_ID` | Quota KV namespace ID | `105bd87c...` |
-| `TOTP_KV_ID` | 2FA KV namespace ID | `8f6dbd72...` |
+| Secret Name             | Description                | Example                      |
+| ----------------------- | -------------------------- | ---------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | API Token                  | `abc123...`                  |
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID                 | `1234567890abcdef...`        |
+| `BUCKET_NAME`           | R2 bucket name             | `my-webdav-storage`          |
+| `USERNAME`              | Admin username             | `admin`                      |
+| `PASSWORD_HASH`         | Password hash from step 5  | `v1:100000:...`              |
+| `JWT_SECRET`            | JWT secret from step 5     | `KF/+klyH...`                |
+| `WORKER_URL`            | Worker access URL          | `https://webdav.example.com` |
+| `RATE_LIMIT_KV_ID`      | Rate limit KV namespace ID | `0e0a3861...`                |
+| `QUOTA_KV_ID`           | Quota KV namespace ID      | `105bd87c...`                |
+| `TOTP_KV_ID`            | 2FA KV namespace ID        | `8f6dbd72...`                |
 
 Optional configuration (with defaults):
 
-| Secret Name | Description | Default |
-|------------|-------------|---------|
-| `MAX_FILE_SIZE` | Max file size in bytes | `104857600` (100MB) |
+| Secret Name     | Description                  | Default              |
+| --------------- | ---------------------------- | -------------------- |
+| `MAX_FILE_SIZE` | Max file size in bytes       | `104857600` (100MB)  |
 | `STORAGE_QUOTA` | Total storage quota in bytes | `10737418240` (10GB) |
 
 #### Deploy
@@ -193,6 +195,7 @@ After configuration, deployment will trigger automatically:
    ```
 
 **Detailed deployment documentation**:
+
 - 🇨🇳 [Chinese Deployment Guide](docs/DEPLOYMENT_CN.md)
 - 🇬🇧 [English Deployment Guide](docs/DEPLOYMENT.md) - With illustrations and troubleshooting
 
@@ -318,14 +321,17 @@ If you've enabled two-factor authentication, WebDAV clients need special configu
 **Method 1: App Password**
 
 Some clients support appending the 2FA code to the password field:
+
 ```
 Password: your-password123456
 ```
+
 Where `123456` is the current TOTP code (6 digits).
 
 **Method 2: Bearer Token (Advanced)**
 
 1. First obtain access token via API:
+
    ```bash
    # Login to get token
    curl -X POST https://your-worker.workers.dev/auth/login \
@@ -348,6 +354,7 @@ Where `123456` is the current TOTP code (6 digits).
    - Install authenticator app on your phone (recommended: Google Authenticator, Authy, Microsoft Authenticator)
 
 2. **Enable 2FA**:
+
    ```bash
    # Initiate setup request (requires login to get accessToken first)
    curl -X POST https://your-worker.workers.dev/auth/2fa/setup \
@@ -355,6 +362,7 @@ Where `123456` is the current TOTP code (6 digits).
    ```
 
    Returns:
+
    ```json
    {
      "secret": "JBSWY3DPEHPK3PXP",
@@ -369,6 +377,7 @@ Where `123456` is the current TOTP code (6 digits).
    - Or manually enter `secret`
 
 4. **Verify and enable**:
+
    ```bash
    # Enter 6-digit code displayed by authenticator
    curl -X POST https://your-worker.workers.dev/auth/2fa/verify-setup \
@@ -385,6 +394,7 @@ Where `123456` is the current TOTP code (6 digits).
 #### Setup Passkey Passwordless Login
 
 **Prerequisites**:
+
 - Modern browser with WebAuthn support (Chrome 67+, Firefox 60+, Safari 13+, Edge 18+)
 - Device with biometric support (Touch ID, Face ID, Windows Hello) or FIDO2 security key
 
@@ -452,11 +462,13 @@ curl -X POST https://your-worker.workers.dev/auth/2fa/recovery-codes/regenerate 
 <summary><strong>Q: Can't access after deployment, showing 404 or 500 error?</strong></summary>
 
 **Possible causes**:
+
 1. Worker deployment failed
 2. R2 bucket name configured incorrectly
 3. KV namespace IDs incorrect
 
 **Solutions**:
+
 1. Check GitHub Actions deployment logs to confirm successful deployment
 2. Verify in Cloudflare Dashboard:
    - Workers & Pages → Find your Worker → Check if deployed successfully
@@ -502,6 +514,7 @@ Yes. In Cloudflare Dashboard:
 Windows doesn't support non-HTTPS WebDAV by default and is sensitive to certain configurations.
 
 **Solutions**:
+
 1. Ensure using HTTPS (Cloudflare Workers provides by default)
 2. URL must end with `/webdav/`
 3. Recommend using RaiDrive or Cyberduck instead of built-in functionality
@@ -515,10 +528,12 @@ Windows doesn't support non-HTTPS WebDAV by default and is sensitive to certain 
 <summary><strong>Q: Large file upload fails?</strong></summary>
 
 **Reasons**:
+
 - Exceeds configured single file size limit (default 100MB)
 - Cloudflare Workers request time limit (free tier 30 seconds, paid tier 15 minutes)
 
 **Solutions**:
+
 1. Adjust `MAX_FILE_SIZE` environment variable
 2. For large files (> 100MB):
    - Consider using Cloudflare Workers Paid Plan
@@ -576,11 +591,13 @@ If recovery codes also lost, can only reset KV namespace to clear 2FA configurat
 <summary><strong>Q: Passkey login fails?</strong></summary>
 
 **Possible causes**:
+
 1. Browser doesn't support WebAuthn
 2. Using different domain (Passkey bound to domain)
 3. Device or browser doesn't have registered Passkey
 
 **Solutions**:
+
 1. Confirm browser supports WebAuthn (check [Can I Use](https://caniuse.com/webauthn))
 2. Ensure accessing same domain as when Passkey was registered
 3. If Passkey unavailable, use password login
@@ -610,10 +627,12 @@ Paid users can use Logpush to export logs to external systems for analysis.
 <summary><strong>Q: Slow file download speed?</strong></summary>
 
 **Possible causes**:
+
 - Geographic distance from R2 bucket is far
 - Network issues
 
 **Optimization methods**:
+
 1. Cloudflare R2 automatically uses global edge network for acceleration
 2. For large files, consider:
    - Enable Cloudflare CDN caching
@@ -628,6 +647,7 @@ Paid users can use Logpush to export logs to external systems for analysis.
 Free tier Cloudflare Workers has 30-second CPU time limit.
 
 **Solutions**:
+
 1. Reduce file size for single operations
 2. Upgrade to Workers Paid Plan (CPU time limit increased to 15 minutes)
 3. For listing many files, use pagination
@@ -642,6 +662,7 @@ Free tier Cloudflare Workers has 30-second CPU time limit.
 Current version only supports single user (one username/password).
 
 For multi-user support:
+
 - Deploy separate Worker instance for each user
 - Or consider forking the project and implementing multi-user functionality
 
@@ -651,11 +672,13 @@ For multi-user support:
 <summary><strong>Q: Is data secure? Can Cloudflare access it?</strong></summary>
 
 **Data security guarantees**:
+
 1. Passwords stored using PBKDF2 hash, even if database leaks, original password cannot be recovered
 2. JWT tokens signed with HMAC-SHA256, cannot be forged
 3. All transmissions use HTTPS encryption
 
 **Cloudflare access**:
+
 - Cloudflare as infrastructure provider theoretically can access data stored in R2
 - But Cloudflare's privacy policy promises not to view user data
 - If end-to-end encryption needed, recommend encrypting files on client before upload
@@ -666,16 +689,19 @@ For multi-user support:
 <summary><strong>Q: How to backup data?</strong></summary>
 
 **Method 1: Using WebDAV client**
+
 - Connect to WebDAV
 - Copy all files to local
 
 **Method 2: Using Cloudflare API**
+
 ```bash
 # Use rclone to sync R2 data
 rclone sync r2:my-bucket /local/backup
 ```
 
 **Method 3: R2 snapshots** (paid feature)
+
 - Cloudflare R2 supports object versioning (need to enable in bucket settings)
 
 Recommend backing up important data regularly.
@@ -695,12 +721,14 @@ If you need to modify code or test locally:
 ### Development Steps
 
 1. **Clone repository**:
+
    ```bash
    git clone https://github.com/amm10090/CFr2-webdav.git
    cd CFr2-webdav
    ```
 
 2. **Install dependencies**:
+
    ```bash
    npm install
    # or
@@ -708,12 +736,14 @@ If you need to modify code or test locally:
    ```
 
 3. **Configure wrangler.toml**:
+
    ```bash
    cp wrangler.toml.example wrangler.toml
    # Edit wrangler.toml, fill in your configuration
    ```
 
 4. **Local development**:
+
    ```bash
    npm run dev
    ```
@@ -734,13 +764,16 @@ If you need to modify code or test locally:
 ## Documentation
 
 ### Deployment Docs
+
 - [Chinese Deployment Guide](docs/DEPLOYMENT_CN.md) - Detailed illustrated tutorial
 - [English Deployment Guide](docs/DEPLOYMENT.md) - Full deployment instructions
 
 ### Security Docs
+
 - [Security Setup Guide](docs/SECURITY_SETUP.md) - 2FA and Passkey setup details
 
 ### API Docs
+
 - Authentication API:
   - `POST /auth/login` - User login
   - `POST /auth/refresh` - Refresh token
@@ -753,6 +786,7 @@ If you need to modify code or test locally:
 ## Changelog
 
 ### v1.0.0 (Current)
+
 - Complete WebDAV protocol support
 - Three-tier security: Basic security, 2FA, Passkey
 - Modern Web UI (Tailwind CSS 4)
@@ -763,6 +797,7 @@ If you need to modify code or test locally:
 Pull Requests and Issues are welcome to improve this project!
 
 ### Contribution Guide
+
 1. Fork this repository
 2. Create feature branch (`git checkout -b feature/AmazingFeature`)
 3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
@@ -789,6 +824,7 @@ Special thanks to all contributors and users of this project!
 ---
 
 **Security Reminders**:
+
 1. Regularly update passwords and rotate JWT keys
 2. Enable 2FA or Passkey to improve security
 3. Don't use weak passwords on public networks

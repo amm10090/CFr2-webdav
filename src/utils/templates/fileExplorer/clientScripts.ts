@@ -8,7 +8,7 @@ import { TRANSLATIONS } from '../translations';
  */
 export function generateFileExplorerScript(currentPath: string, initialItems: string): string {
 	const translationsJSON = JSON.stringify(TRANSLATIONS);
-	
+
 	return `
     // ---- Translations ----
     const TRANSLATIONS = ${translationsJSON};

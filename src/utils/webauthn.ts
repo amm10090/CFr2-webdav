@@ -387,9 +387,7 @@ export async function verifyAuthenticationResponse(
 
 	// Step 3: Verify signature
 	// Signature is over: authenticatorData || SHA-256(clientDataJSON)
-	const clientDataHash = new Uint8Array(
-		await crypto.subtle.digest('SHA-256', credential.response.clientDataJSON)
-	);
+	const clientDataHash = new Uint8Array(await crypto.subtle.digest('SHA-256', credential.response.clientDataJSON));
 	const signedData = concatUint8(authDataBytes, clientDataHash);
 	const signature = new Uint8Array(credential.response.signature);
 
@@ -576,9 +574,7 @@ async function importCosePublicKey(coseKeyBytes: Uint8Array): Promise<CryptoKey>
 			alg: 'RS256',
 		};
 
-		return crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, [
-			'verify',
-		]);
+		return crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
 	}
 
 	throw new Error(`Unsupported COSE key type: kty=${kty}, alg=${alg}`);
@@ -648,11 +644,7 @@ function decodeCbor(data: Uint8Array): any {
 				return v;
 			}
 			if (l === 26) {
-				const v =
-					(data[offset] << 24) |
-					(data[offset + 1] << 16) |
-					(data[offset + 2] << 8) |
-					data[offset + 3];
+				const v = (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
 				offset += 4;
 				return v >>> 0;
 			}

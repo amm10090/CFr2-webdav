@@ -365,7 +365,7 @@ interface StorageQuotaState {
 export async function checkStorageQuota(
 	kv: KVNamespace,
 	newFileSize: number,
-	maxQuota: number = TOTAL_STORAGE_LIMIT
+	maxQuota: number = TOTAL_STORAGE_LIMIT,
 ): Promise<{ usedBytes: number; maxBytes: number; availableBytes: number }> {
 	const key = 'storage:quota';
 
@@ -377,7 +377,7 @@ export async function checkStorageQuota(
 				totalBytes: 0,
 				lastUpdated: Date.now(),
 				fileCount: 0,
-		  };
+			};
 
 	const usedBytes = state.totalBytes;
 	const availableBytes = maxQuota - usedBytes;
@@ -388,8 +388,7 @@ export async function checkStorageQuota(
 		const usedGB = (usedBytes / 1024 / 1024 / 1024).toFixed(2);
 		const neededMB = Math.ceil(newFileSize / 1024 / 1024);
 		throw new Error(
-			`Storage quota exceeded: using ${usedGB} GB of ${quotaGB} GB. ` +
-				`Cannot upload ${neededMB} MB file.`
+			`Storage quota exceeded: using ${usedGB} GB of ${quotaGB} GB. ` + `Cannot upload ${neededMB} MB file.`,
 		);
 	}
 
@@ -417,11 +416,7 @@ export async function checkStorageQuota(
  * // After deleting a file
  * await updateStorageQuota(env.QUOTA_KV, -fileSize, -1);
  */
-export async function updateStorageQuota(
-	kv: KVNamespace,
-	deltaBytes: number,
-	deltaFiles: number
-): Promise<void> {
+export async function updateStorageQuota(kv: KVNamespace, deltaBytes: number, deltaFiles: number): Promise<void> {
 	const key = 'storage:quota';
 
 	// Get current state
@@ -432,7 +427,7 @@ export async function updateStorageQuota(
 				totalBytes: 0,
 				lastUpdated: Date.now(),
 				fileCount: 0,
-		  };
+			};
 
 	// Update state
 	const newState: StorageQuotaState = {
@@ -458,7 +453,7 @@ export async function updateStorageQuota(
  */
 export async function getStorageQuotaInfo(
 	kv: KVNamespace,
-	maxQuota: number = TOTAL_STORAGE_LIMIT
+	maxQuota: number = TOTAL_STORAGE_LIMIT,
 ): Promise<{
 	usedBytes: number;
 	maxBytes: number;
@@ -475,7 +470,7 @@ export async function getStorageQuotaInfo(
 				totalBytes: 0,
 				lastUpdated: Date.now(),
 				fileCount: 0,
-		  };
+			};
 
 	const usedBytes = state.totalBytes;
 	const availableBytes = maxQuota - usedBytes;

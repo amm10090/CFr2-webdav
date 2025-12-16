@@ -70,7 +70,6 @@ export async function authenticate(request: Request, env: Env): Promise<AuthCont
 		return await authenticateJWT(authHeader, env);
 	}
 
-
 	// Unknown authentication type
 	return null;
 }
@@ -178,7 +177,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 				{
 					status: 200,
 					headers: { 'Content-Type': 'application/json' },
-				}
+				},
 			);
 		}
 
@@ -196,7 +195,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -253,7 +252,7 @@ export async function handleRefresh(request: Request, env: Env): Promise<Respons
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -343,11 +342,7 @@ async function enforceLoginRateLimit(
 	const blockedStatuses = [ipStatus, userStatus, comboStatus].filter((s) => !s.allowed);
 	if (blockedStatuses.length > 0) {
 		// Find the maximum blocked time across all blocked keys
-		const blockedUntil = Math.max(
-			...blockedStatuses
-				.map((s) => s.blockedUntil ?? s.resetAt ?? 0)
-				.filter((v) => v > 0)
-		);
+		const blockedUntil = Math.max(...blockedStatuses.map((s) => s.blockedUntil ?? s.resetAt ?? 0).filter((v) => v > 0));
 
 		if (returnDetail && blockedUntil > 0) {
 			const retryAfter = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
@@ -385,11 +380,7 @@ async function enforceLoginRateLimit(
  */
 async function resetLoginRateLimits(env: Env, username: string, request: Request): Promise<void> {
 	const clientId = getClientIdentifier(request);
-	const keys = [
-		`login:ip:${clientId}`,
-		`login:user:${username}`,
-		`login:user-ip:${username}:${clientId}`,
-	];
+	const keys = [`login:ip:${clientId}`, `login:user:${username}`, `login:user-ip:${username}:${clientId}`];
 
 	await Promise.all(keys.map((key) => resetRateLimit(env.RATE_LIMIT_KV, key)));
 }
@@ -494,7 +485,7 @@ export async function handle2FASetup(request: Request, env: Env, authContext: Au
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		console.error('2FA setup error:', error);
@@ -587,7 +578,7 @@ export async function handle2FAVerifySetup(request: Request, env: Env, authConte
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -643,7 +634,7 @@ export async function handle2FADisable(request: Request, env: Env, authContext: 
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -670,7 +661,7 @@ export async function handle2FADisable(request: Request, env: Env, authContext: 
 export async function handle2FARegenerateRecoveryCodes(
 	request: Request,
 	env: Env,
-	authContext: AuthContext
+	authContext: AuthContext,
 ): Promise<Response> {
 	try {
 		const username = authContext.userId;
@@ -692,10 +683,10 @@ export async function handle2FARegenerateRecoveryCodes(
 		// If any key is already blocked, reject immediately
 		if (![ipStatus, userStatus, comboStatus].every((s) => s.allowed)) {
 			const blockedUntil = Math.max(
-				...([ipStatus, userStatus, comboStatus]
+				...[ipStatus, userStatus, comboStatus]
 					.filter((s) => !s.allowed)
 					.map((s) => s.blockedUntil ?? s.resetAt ?? 0)
-					.filter((v) => v > 0))
+					.filter((v) => v > 0),
 			);
 			const retryAfter = blockedUntil > 0 ? Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000)) : 3600;
 
@@ -785,7 +776,7 @@ export async function handle2FARegenerateRecoveryCodes(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -798,7 +789,6 @@ export async function handle2FARegenerateRecoveryCodes(
 		});
 	}
 }
-
 
 /**
  * Get 2FA status
@@ -821,7 +811,7 @@ export async function handle2FAStatus(request: Request, env: Env, authContext: A
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		console.error('2FA status error:', error);
@@ -944,7 +934,7 @@ export async function handle2FAVerify(request: Request, env: Env): Promise<Respo
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -978,7 +968,7 @@ function getAuthKV(env: Env): KVNamespace {
 export async function handlePasskeyRegisterStart(
 	request: Request,
 	env: Env,
-	authContext: AuthContext
+	authContext: AuthContext,
 ): Promise<Response> {
 	try {
 		const username = authContext.userId;
@@ -1015,17 +1005,14 @@ export async function handlePasskeyRegisterStart(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		console.error('Passkey register start error:', error);
-		return new Response(
-			JSON.stringify({ error: 'Internal server error' }),
-			{
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 }
 
@@ -1039,7 +1026,7 @@ export async function handlePasskeyRegisterStart(
 export async function handlePasskeyRegisterFinish(
 	request: Request,
 	env: Env,
-	authContext: AuthContext
+	authContext: AuthContext,
 ): Promise<Response> {
 	try {
 		const username = authContext.userId;
@@ -1049,36 +1036,27 @@ export async function handlePasskeyRegisterFinish(
 		const { credential, challengeId, name } = body;
 
 		if (!credential || !challengeId) {
-			return new Response(
-				JSON.stringify({ error: 'Missing credential or challengeId' }),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Missing credential or challengeId' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		// Retrieve challenge
 		const challengeRecord = await getChallenge(kv, challengeId);
 		if (!challengeRecord) {
-			return new Response(
-				JSON.stringify({ error: 'Challenge not found or expired' }),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Challenge not found or expired' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		// Verify user matches
 		if (challengeRecord.userId !== username) {
-			return new Response(
-				JSON.stringify({ error: 'Challenge user mismatch' }),
-				{
-					status: 403,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Challenge user mismatch' }), {
+				status: 403,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		// Verify registration response
@@ -1092,7 +1070,7 @@ export async function handlePasskeyRegisterFinish(
 			normalizedCredential,
 			expectedChallenge,
 			rpId,
-			env.WORKER_URL
+			env.WORKER_URL,
 		);
 
 		// Delete challenge to prevent reuse
@@ -1119,7 +1097,7 @@ export async function handlePasskeyRegisterFinish(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -1134,7 +1112,7 @@ export async function handlePasskeyRegisterFinish(
 			{
 				status: 400,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	}
 }
@@ -1146,22 +1124,16 @@ export async function handlePasskeyRegisterFinish(
  * Body: { username }
  * No authentication required
  */
-export async function handlePasskeyAuthStart(
-	request: Request,
-	env: Env
-): Promise<Response> {
+export async function handlePasskeyAuthStart(request: Request, env: Env): Promise<Response> {
 	try {
 		const body = await safeJson<PasskeyAuthStartRequest>(request);
 		const { username } = body;
 
 		if (!username) {
-			return new Response(
-				JSON.stringify({ error: 'Username is required' }),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Username is required' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		// Multi-tier rate limiting (IP / User / Combo) to prevent abuse
@@ -1180,23 +1152,20 @@ export async function handlePasskeyAuthStart(
 		// If any key is already blocked, reject immediately
 		if (![ipStatus, userStatus, comboStatus].every((s) => s.allowed)) {
 			const blockedUntil = Math.max(
-				...([ipStatus, userStatus, comboStatus]
+				...[ipStatus, userStatus, comboStatus]
 					.filter((s) => !s.allowed)
 					.map((s) => s.blockedUntil ?? s.resetAt ?? 0)
-					.filter((v) => v > 0))
+					.filter((v) => v > 0),
 			);
 			const retryAfter = blockedUntil > 0 ? Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000)) : 3600;
 
-			return new Response(
-				JSON.stringify({ error: 'Too many authentication attempts' }),
-				{
-					status: 429,
-					headers: {
-						'Content-Type': 'application/json',
-						'Retry-After': retryAfter.toString(),
-					},
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Too many authentication attempts' }), {
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': retryAfter.toString(),
+				},
+			});
 		}
 
 		// Phase 2: Increment only combo key
@@ -1213,16 +1182,13 @@ export async function handlePasskeyAuthStart(
 					? Math.max(1, Math.ceil((comboCheck.blockedUntil - Date.now()) / 1000))
 					: Math.max(1, Math.ceil(PASSKEY_AUTH_RATE_LIMIT.blockDurationMs / 1000));
 
-			return new Response(
-				JSON.stringify({ error: 'Too many authentication attempts' }),
-				{
-					status: 429,
-					headers: {
-						'Content-Type': 'application/json',
-						'Retry-After': retryAfter.toString(),
-					},
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Too many authentication attempts' }), {
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': retryAfter.toString(),
+				},
+			});
 		}
 
 		const kv = getAuthKV(env);
@@ -1263,20 +1229,17 @@ export async function handlePasskeyAuthStart(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
 			return error;
 		}
 		console.error('Passkey auth start error:', error);
-		return new Response(
-			JSON.stringify({ error: 'Internal server error' }),
-			{
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 }
 
@@ -1289,22 +1252,16 @@ export async function handlePasskeyAuthStart(
  *
  * @returns JWT access and refresh tokens
  */
-export async function handlePasskeyAuthFinish(
-	request: Request,
-	env: Env
-): Promise<Response> {
+export async function handlePasskeyAuthFinish(request: Request, env: Env): Promise<Response> {
 	try {
 		const body = await safeJson<PasskeyAuthFinishRequest>(request);
 		const { credential, challengeId } = body;
 
 		if (!credential || !challengeId) {
-			return new Response(
-				JSON.stringify({ error: 'Missing credential or challengeId' }),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Missing credential or challengeId' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		const kv = getAuthKV(env);
@@ -1312,13 +1269,10 @@ export async function handlePasskeyAuthFinish(
 		// Retrieve challenge
 		const challengeRecord = await getChallenge(kv, challengeId);
 		if (!challengeRecord) {
-			return new Response(
-				JSON.stringify({ error: 'Challenge not found or expired' }),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Challenge not found or expired' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		const username = challengeRecord.userId;
@@ -1339,23 +1293,20 @@ export async function handlePasskeyAuthFinish(
 		// If any key is already blocked, reject immediately
 		if (![ipStatus, userStatus, comboStatus].every((s) => s.allowed)) {
 			const blockedUntil = Math.max(
-				...([ipStatus, userStatus, comboStatus]
+				...[ipStatus, userStatus, comboStatus]
 					.filter((s) => !s.allowed)
 					.map((s) => s.blockedUntil ?? s.resetAt ?? 0)
-					.filter((v) => v > 0))
+					.filter((v) => v > 0),
 			);
 			const retryAfter = blockedUntil > 0 ? Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000)) : 3600;
 
-			return new Response(
-				JSON.stringify({ error: 'Too many authentication attempts' }),
-				{
-					status: 429,
-					headers: {
-						'Content-Type': 'application/json',
-						'Retry-After': retryAfter.toString(),
-					},
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Too many authentication attempts' }), {
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': retryAfter.toString(),
+				},
+			});
 		}
 
 		// Phase 2: Increment only combo key
@@ -1372,16 +1323,13 @@ export async function handlePasskeyAuthFinish(
 					? Math.max(1, Math.ceil((comboCheck.blockedUntil - Date.now()) / 1000))
 					: Math.max(1, Math.ceil(PASSKEY_AUTH_RATE_LIMIT.blockDurationMs / 1000));
 
-			return new Response(
-				JSON.stringify({ error: 'Too many authentication attempts' }),
-				{
-					status: 429,
-					headers: {
-						'Content-Type': 'application/json',
-						'Retry-After': retryAfter.toString(),
-					},
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Too many authentication attempts' }), {
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': retryAfter.toString(),
+				},
+			});
 		}
 
 		// Normalize credential from client JSON format
@@ -1389,21 +1337,19 @@ export async function handlePasskeyAuthFinish(
 
 		// Get credential from storage
 		// Extract credential ID from response
-		const credentialIdB64 = typeof normalizedCredential?.rawId === 'string'
-			? normalizedCredential.rawId
-			: base64urlEncode(new Uint8Array(normalizedCredential.rawId));
+		const credentialIdB64 =
+			typeof normalizedCredential?.rawId === 'string'
+				? normalizedCredential.rawId
+				: base64urlEncode(new Uint8Array(normalizedCredential.rawId));
 
 		const storedKey = `passkey:${username}:${credentialIdB64}`;
 		const storedDataRaw = await kv.get(storedKey);
 
 		if (!storedDataRaw) {
-			return new Response(
-				JSON.stringify({ error: 'Authentication failed' }),
-				{
-					status: 401,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Authentication failed' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		const storedCredential = JSON.parse(storedDataRaw) as PasskeyCredential;
@@ -1416,7 +1362,7 @@ export async function handlePasskeyAuthFinish(
 			expectedChallenge,
 			storedCredential,
 			rpId,
-			env.WORKER_URL
+			env.WORKER_URL,
 		);
 
 		// Delete challenge
@@ -1448,7 +1394,7 @@ export async function handlePasskeyAuthFinish(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		if (error instanceof Response) {
@@ -1463,7 +1409,7 @@ export async function handlePasskeyAuthFinish(
 			{
 				status: 401,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	}
 }
@@ -1474,18 +1420,14 @@ export async function handlePasskeyAuthFinish(
  * GET /auth/passkeys
  * Requires authentication
  */
-export async function handlePasskeyList(
-	request: Request,
-	env: Env,
-	authContext: AuthContext
-): Promise<Response> {
+export async function handlePasskeyList(request: Request, env: Env, authContext: AuthContext): Promise<Response> {
 	try {
 		const username = authContext.userId;
 		const kv = getAuthKV(env);
 
 		const passkeys = await listUserPasskeys(kv, username);
 
-		const passkeyList: PasskeyListItem[] = passkeys.map(p => ({
+		const passkeyList: PasskeyListItem[] = passkeys.map((p) => ({
 			id: p.credentialId,
 			name: p.name,
 			createdAt: p.createdAt,
@@ -1499,17 +1441,14 @@ export async function handlePasskeyList(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		console.error('Passkey list error:', error);
-		return new Response(
-			JSON.stringify({ error: 'Internal server error' }),
-			{
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 }
 
@@ -1523,7 +1462,7 @@ export async function handlePasskeyDelete(
 	request: Request,
 	env: Env,
 	authContext: AuthContext,
-	credentialId: string
+	credentialId: string,
 ): Promise<Response> {
 	try {
 		const username = authContext.userId;
@@ -1533,13 +1472,10 @@ export async function handlePasskeyDelete(
 		const existing = await kv.get(key);
 
 		if (!existing) {
-			return new Response(
-				JSON.stringify({ error: 'Passkey not found' }),
-				{
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
+			return new Response(JSON.stringify({ error: 'Passkey not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		await kv.delete(key);
@@ -1553,17 +1489,14 @@ export async function handlePasskeyDelete(
 			{
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}
+			},
 		);
 	} catch (error) {
 		console.error('Passkey delete error:', error);
-		return new Response(
-			JSON.stringify({ error: 'Internal server error' }),
-			{
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 }
 

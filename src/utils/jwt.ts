@@ -90,7 +90,7 @@ async function sign(data: string, secret: string): Promise<string> {
 		TEXT_ENCODER.encode(secret),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
-		['sign']
+		['sign'],
 	);
 
 	const signature = await crypto.subtle.sign('HMAC', key, TEXT_ENCODER.encode(data));
@@ -113,7 +113,7 @@ async function verify(data: string, signature: string, secret: string): Promise<
 			TEXT_ENCODER.encode(secret),
 			{ name: 'HMAC', hash: 'SHA-256' },
 			false,
-			['verify']
+			['verify'],
 		);
 
 		const signatureBuffer = base64urlDecode(signature);

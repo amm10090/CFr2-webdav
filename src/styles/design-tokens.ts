@@ -56,8 +56,7 @@ export const COLORS = {
 	// 组件专用色彩（预定义组合）
 	button: {
 		// 主按钮：深灰底白字（浅色）/ 白底深字（暗黑）
-		primary:
-			'bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900',
+		primary: 'bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900',
 		// 次要按钮：灰色边框
 		secondary:
 			'border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
@@ -290,14 +289,9 @@ export const COMPONENTS = {
 	label: [TYPOGRAPHY.label.form, COLORS.text.label, SPACING.margin.labelInput].join(' '),
 
 	// 卡片容器
-	card: [
-		COLORS.background.card,
-		RADIUS.card,
-		SHADOW.md,
-		SPACING.padding.card,
-		'border',
-		COLORS.border.default,
-	].join(' '),
+	card: [COLORS.background.card, RADIUS.card, SHADOW.md, SPACING.padding.card, 'border', COLORS.border.default].join(
+		' ',
+	),
 
 	// 错误提示
 	errorAlert: [

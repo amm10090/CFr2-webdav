@@ -8,11 +8,7 @@ import { generateFileExplorerHTMLStructure } from './htmlStructure';
  * @param currentPath - Current directory path (default: '/')
  * @returns Complete HTML document as string
  */
-export function generateHTML(
-	title: string,
-	items: { name: string; href: string }[],
-	currentPath = '/',
-): string {
+export function generateHTML(title: string, items: { name: string; href: string }[], currentPath = '/'): string {
 	// The heavy UI logic runs on the client; we pass minimal initial data to avoid duplicate fetch.
 	const initialItems = JSON.stringify(items || []);
 	const scriptContent = generateFileExplorerScript(currentPath, initialItems);

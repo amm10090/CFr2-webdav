@@ -17,12 +17,14 @@
 ## 核心特性
 
 ### 文件管理
+
 - 完全兼容 WebDAV 协议，支持所有标准客户端
 - 支持文件上传、下载、删除、移动、复制操作
 - 支持目录创建和浏览
 - 内置现代化 Web 文件管理界面
 
 ### 技术架构
+
 - 基于 Cloudflare Workers 边缘计算，全球加速访问
 - 使用 Cloudflare R2 作为存储后端（慷慨的免费额度）
 - 无需管理服务器，自动扩展
@@ -145,25 +147,25 @@
 
 添加以下 Secrets（全部必需）：
 
-| Secret 名称 | 说明 | 示例 |
-|------------|------|------|
-| `CLOUDFLARE_API_TOKEN` | API Token | `abc123...` |
-| `CLOUDFLARE_ACCOUNT_ID` | 账户 ID | `1234567890abcdef...` |
-| `BUCKET_NAME` | R2 存储桶名称 | `my-webdav-storage` |
-| `USERNAME` | 管理员用户名 | `admin` |
-| `PASSWORD_HASH` | 步骤 5 生成的密码哈希 | `v1:100000:...` |
-| `JWT_SECRET` | 步骤 5 生成的 JWT 密钥 | `KF/+klyH...` |
-| `WORKER_URL` | Worker 访问 URL | `https://webdav.example.com` |
-| `RATE_LIMIT_KV_ID` | 限流 KV 命名空间 ID | `0e0a3861...` |
-| `QUOTA_KV_ID` | 配额 KV 命名空间 ID | `105bd87c...` |
-| `TOTP_KV_ID` | 2FA KV 命名空间 ID | `8f6dbd72...` |
+| Secret 名称             | 说明                   | 示例                         |
+| ----------------------- | ---------------------- | ---------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | API Token              | `abc123...`                  |
+| `CLOUDFLARE_ACCOUNT_ID` | 账户 ID                | `1234567890abcdef...`        |
+| `BUCKET_NAME`           | R2 存储桶名称          | `my-webdav-storage`          |
+| `USERNAME`              | 管理员用户名           | `admin`                      |
+| `PASSWORD_HASH`         | 步骤 5 生成的密码哈希  | `v1:100000:...`              |
+| `JWT_SECRET`            | 步骤 5 生成的 JWT 密钥 | `KF/+klyH...`                |
+| `WORKER_URL`            | Worker 访问 URL        | `https://webdav.example.com` |
+| `RATE_LIMIT_KV_ID`      | 限流 KV 命名空间 ID    | `0e0a3861...`                |
+| `QUOTA_KV_ID`           | 配额 KV 命名空间 ID    | `105bd87c...`                |
+| `TOTP_KV_ID`            | 2FA KV 命名空间 ID     | `8f6dbd72...`                |
 
 可选配置（有默认值）：
 
-| Secret 名称 | 说明 | 默认值 |
-|------------|------|--------|
-| `MAX_FILE_SIZE` | 单文件最大大小（字节） | `104857600`（100MB） |
-| `STORAGE_QUOTA` | 总存储配额（字节） | `10737418240`（10GB） |
+| Secret 名称     | 说明                   | 默认值                |
+| --------------- | ---------------------- | --------------------- |
+| `MAX_FILE_SIZE` | 单文件最大大小（字节） | `104857600`（100MB）  |
+| `STORAGE_QUOTA` | 总存储配额（字节）     | `10737418240`（10GB） |
 
 #### 部署
 
@@ -193,6 +195,7 @@
    ```
 
 **详细部署文档**：
+
 - 🇨🇳 [中文部署指南](docs/DEPLOYMENT_CN.md) - 包含图文说明和故障排查
 - 🇬🇧 [English Deployment Guide](docs/DEPLOYMENT.md)
 
@@ -318,14 +321,17 @@ WebDAV 协议支持让您可以像访问本地磁盘一样管理云端文件。
 **方式 1：使用应用密码（App Password）**
 
 某些客户端支持在密码字段附加 2FA 验证码：
+
 ```
 密码: 您的密码123456
 ```
+
 其中 `123456` 是当前的 TOTP 验证码（6位数字）。
 
 **方式 2：使用 Bearer Token（高级）**
 
 1. 先通过 API 获取访问令牌：
+
    ```bash
    # 登录获取令牌
    curl -X POST https://your-worker.workers.dev/auth/login \
@@ -348,6 +354,7 @@ WebDAV 协议支持让您可以像访问本地磁盘一样管理云端文件。
    - 在手机上安装验证器 App（推荐：Google Authenticator、Authy、Microsoft Authenticator）
 
 2. **开启 2FA**：
+
    ```bash
    # 发起设置请求（需要先登录获取 accessToken）
    curl -X POST https://your-worker.workers.dev/auth/2fa/setup \
@@ -355,6 +362,7 @@ WebDAV 协议支持让您可以像访问本地磁盘一样管理云端文件。
    ```
 
    返回：
+
    ```json
    {
      "secret": "JBSWY3DPEHPK3PXP",
@@ -369,6 +377,7 @@ WebDAV 协议支持让您可以像访问本地磁盘一样管理云端文件。
    - 或手动输入 `secret`
 
 4. **验证并启用**：
+
    ```bash
    # 输入验证器显示的 6 位数字
    curl -X POST https://your-worker.workers.dev/auth/2fa/verify-setup \
@@ -385,6 +394,7 @@ WebDAV 协议支持让您可以像访问本地磁盘一样管理云端文件。
 #### 设置 Passkey 无密码登录
 
 **前提条件**：
+
 - 使用支持 WebAuthn 的现代浏览器（Chrome 67+、Firefox 60+、Safari 13+、Edge 18+）
 - 设备支持生物识别（Touch ID、Face ID、Windows Hello）或拥有 FIDO2 安全密钥
 
@@ -452,11 +462,13 @@ curl -X POST https://your-worker.workers.dev/auth/2fa/recovery-codes/regenerate 
 <summary><strong>Q: 部署后无法访问，显示 404 或 500 错误？</strong></summary>
 
 **可能原因**：
+
 1. Worker 部署未成功
 2. R2 存储桶名称配置错误
 3. KV 命名空间 ID 不正确
 
 **解决方法**：
+
 1. 检查 GitHub Actions 部署日志，确认部署成功
 2. 在 Cloudflare Dashboard 中验证：
    - Workers & Pages → 找到您的 Worker → 查看是否部署成功
@@ -502,6 +514,7 @@ curl -X POST https://your-worker.workers.dev/auth/2fa/recovery-codes/regenerate 
 Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 
 **解决方法**：
+
 1. 确保使用 HTTPS（Cloudflare Workers 默认提供）
 2. URL 必须以 `/webdav/` 结尾
 3. 推荐使用 RaiDrive 或 Cyberduck 代替系统自带功能
@@ -515,10 +528,12 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 <summary><strong>Q: 上传大文件失败？</strong></summary>
 
 **原因**：
+
 - 超过配置的单文件大小限制（默认 100MB）
 - Cloudflare Workers 请求时间限制（免费版 30 秒，付费版 15 分钟）
 
 **解决方法**：
+
 1. 调整 `MAX_FILE_SIZE` 环境变量
 2. 对于大文件（> 100MB）：
    - 考虑使用 Cloudflare Workers Paid Plan
@@ -576,11 +591,13 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 <summary><strong>Q: Passkey 登录失败？</strong></summary>
 
 **可能原因**：
+
 1. 浏览器不支持 WebAuthn
 2. 使用了不同的域名（Passkey 绑定域名）
 3. 设备或浏览器未注册 Passkey
 
 **解决方法**：
+
 1. 确认浏览器支持 WebAuthn（查看 [Can I Use](https://caniuse.com/webauthn)）
 2. 确保访问的域名与注册 Passkey 时相同
 3. 如果 Passkey 不可用，使用密码登录
@@ -610,10 +627,12 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 <summary><strong>Q: 文件下载速度慢？</strong></summary>
 
 **可能原因**：
+
 - 地理位置距离 R2 存储桶较远
 - 网络问题
 
 **优化方法**：
+
 1. Cloudflare R2 自动使用全球边缘网络加速
 2. 对于大文件，考虑：
    - 开启 Cloudflare CDN 缓存
@@ -628,6 +647,7 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 免费版 Cloudflare Workers 有 30 秒 CPU 时间限制。
 
 **解决方法**：
+
 1. 减小单次操作的文件大小
 2. 升级到 Workers Paid Plan（CPU 时间限制提升到 15 分钟）
 3. 对于列表大量文件，使用分页
@@ -642,6 +662,7 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 当前版本仅支持单用户（一个用户名/密码）。
 
 如需多用户支持：
+
 - 可以为每个用户部署独立的 Worker 实例
 - 或考虑 Fork 项目并实现多用户功能
 
@@ -651,11 +672,13 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 <summary><strong>Q: 数据安全吗？会被 Cloudflare 访问吗？</strong></summary>
 
 **数据安全保障**：
+
 1. 密码使用 PBKDF2 哈希存储，即使数据库泄露也无法还原原密码
 2. JWT 令牌使用 HMAC-SHA256 签名，无法伪造
 3. 所有传输使用 HTTPS 加密
 
 **Cloudflare 访问**：
+
 - Cloudflare 作为基础设施提供商，理论上可以访问存储在 R2 的数据
 - 但 Cloudflare 的隐私政策承诺不会查看用户数据
 - 如果需要端到端加密，建议上传前在客户端加密文件
@@ -666,16 +689,19 @@ Windows 默认不支持非 HTTPS 的 WebDAV，并且对某些配置敏感。
 <summary><strong>Q: 如何备份数据？</strong></summary>
 
 **方式 1：使用 WebDAV 客户端**
+
 - 连接到 WebDAV
 - 复制所有文件到本地
 
 **方式 2：使用 Cloudflare API**
+
 ```bash
 # 使用 rclone 同步 R2 数据
 rclone sync r2:my-bucket /local/backup
 ```
 
 **方式 3：R2 快照**（付费功能）
+
 - Cloudflare R2 支持对象版本控制（需要在桶设置中启用）
 
 建议定期备份重要数据。
@@ -695,12 +721,14 @@ rclone sync r2:my-bucket /local/backup
 ### 开发步骤
 
 1. **克隆仓库**：
+
    ```bash
    git clone https://github.com/amm10090/CFr2-webdav.git
    cd CFr2-webdav
    ```
 
 2. **安装依赖**：
+
    ```bash
    npm install
    # 或
@@ -708,12 +736,14 @@ rclone sync r2:my-bucket /local/backup
    ```
 
 3. **配置 wrangler.toml**：
+
    ```bash
    cp wrangler.toml.example wrangler.toml
    # 编辑 wrangler.toml，填入您的配置
    ```
 
 4. **本地开发**：
+
    ```bash
    npm run dev
    ```
@@ -734,13 +764,16 @@ rclone sync r2:my-bucket /local/backup
 ## 文档索引
 
 ### 部署文档
+
 - [中文部署指南](docs/DEPLOYMENT_CN.md) - 详细的图文部署教程
 - [English Deployment Guide](docs/DEPLOYMENT.md) - Full deployment instructions
 
 ### 安全文档
+
 - [安全功能设置指南](docs/SECURITY_SETUP.md) - 2FA 和 Passkey 设置详解
 
 ### API 文档
+
 - 认证 API：
   - `POST /auth/login` - 用户登录
   - `POST /auth/refresh` - 刷新令牌
@@ -753,6 +786,7 @@ rclone sync r2:my-bucket /local/backup
 ## 更新日志
 
 ### v1.0.0（当前版本）
+
 - 完整的 WebDAV 协议支持
 - 三阶段安全功能：基础安全、2FA、Passkey
 - 现代化 Web UI（Tailwind CSS 4）
@@ -763,6 +797,7 @@ rclone sync r2:my-bucket /local/backup
 欢迎提交 Pull Requests 或创建 Issues 来改进这个项目！
 
 ### 贡献指南
+
 1. Fork 本仓库
 2. 创建特性分支（`git checkout -b feature/AmazingFeature`）
 3. 提交更改（`git commit -m 'Add some AmazingFeature'`）
@@ -789,6 +824,7 @@ rclone sync r2:my-bucket /local/backup
 ---
 
 **安全提醒**：
+
 1. 定期更新密码和轮换 JWT 密钥
 2. 启用 2FA 或 Passkey 以提高安全性
 3. 不要在公共网络使用弱密码

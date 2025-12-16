@@ -194,7 +194,7 @@ export interface AuthenticationExtensionsClientInputs {
 export type AlgorithmIdentifier =
 	| string
 	| {
-		name: string;
-		hash?: string | { name: string };
-		[key: string]: unknown;
-	};
+			name: string;
+			hash?: string | { name: string };
+			[key: string]: unknown;
+	  };

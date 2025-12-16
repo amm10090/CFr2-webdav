@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Safelist for classes used in JavaScript template literals */
 /* TailwindCSS v4 uses @source inline() instead of safelist config */
