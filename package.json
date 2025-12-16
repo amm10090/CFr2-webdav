@@ -1,22 +1,22 @@
 {
-	"name": "cf-r2-webdav",
-	"version": "1.0.0",
-	"private": true,
-	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"lint": "prettier . --write",
-		"check": "prettier . --check"
-	},
-	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20251209.0",
-		"@tailwindcss/cli": "^4.1.17",
-		"prettier": "^3.7.4",
-		"tailwindcss": "^4.1.17",
-		"typescript": "^5.9.3",
-		"wrangler": "^4.53.0"
-	},
-	"type": "module",
-	"packageManager": "pnpm@10.25.0+sha512.5e82639027af37cf832061bcc6d639c219634488e0f2baebe785028a793de7b525ffcd3f7ff574f5e9860654e098fe852ba8ac5dd5cefe1767d23a020a92f501"
+    "name": "cf-r2-webdav",
+    "version": "2.0.0",
+    "private": true,
+    "scripts": {
+        "deploy": "wrangler deploy",
+        "dev": "wrangler dev",
+        "start": "wrangler dev",
+        "lint": "prettier . --write",
+        "check": "prettier . --check"
+    },
+    "devDependencies": {
+        "@cloudflare/workers-types": "^4.20251216.0",
+        "@tailwindcss/cli": "^4.1.18",
+        "prettier": "^3.7.4",
+        "tailwindcss": "^4.1.18",
+        "typescript": "^5.9.3",
+        "wrangler": "^4.54.0"
+    },
+    "type": "module",
+    "packageManager": "pnpm@10.26.0"
 }
