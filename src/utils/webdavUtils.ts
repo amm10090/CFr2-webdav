@@ -1,6 +1,7 @@
 // 文件名：src/utils/webdavUtils.ts
 import { R2Object } from '@cloudflare/workers-types';
 import { WebDAVProps } from '../types';
+import { logger } from './logger';
 
 /**
  * Validate a resource path for security
@@ -93,9 +94,22 @@ export async function* listAll(bucket: R2Bucket, prefix: string) {
 	const options = { prefix, delimiter: '/' };
 	let result = await bucket.list(options);
 
-	while (result.objects.length > 0) {
+	do {
+		// 返回文件对象
 		for (const object of result.objects) {
 			yield object;
+		}
+
+		// 返回文件夹（delimitedPrefixes）
+		if (result.delimitedPrefixes && result.delimitedPrefixes.length > 0) {
+			logger.info(`Found ${result.delimitedPrefixes.length} folders:`, result.delimitedPrefixes);
+			for (const folderPrefix of result.delimitedPrefixes) {
+				const folderObject = await bucket.head(folderPrefix);
+				logger.info(`Folder ${folderPrefix}:`, folderObject ? 'found' : 'not found');
+				if (folderObject) {
+					yield folderObject;
+				}
+			}
 		}
 
 		if (result.truncated && result.cursor) {
@@ -103,7 +117,7 @@ export async function* listAll(bucket: R2Bucket, prefix: string) {
 		} else {
 			break;
 		}
-	}
+	} while (result.objects.length > 0 || result.delimitedPrefixes?.length);
 }
 
 export function fromR2Object(object: R2Object | null): WebDAVProps {
@@ -119,9 +133,10 @@ export function fromR2Object(object: R2Object | null): WebDAVProps {
 			resourcetype: 'collection',
 		};
 	}
+	const parts = object.key.split('/').filter((p) => p);
 	return {
 		creationdate: object.uploaded.toUTCString(),
-		displayname: object.key.split('/').pop(),
+		displayname: parts[parts.length - 1] || object.key,
 		getcontentlanguage: object.httpMetadata?.contentLanguage,
 		getcontentlength: object.size.toString(),
 		getcontenttype: object.httpMetadata?.contentType,
@@ -140,14 +155,11 @@ ${responses}
 }
 
 function generatePropResponse(bucketName: string, basePath: string, prop: WebDAVProps): string {
-	// 规范化路径，避免出现多余的斜杠导致客户端发起 // 路径
 	const parts = [basePath, prop.displayname || ''].filter((p) => p);
-	const resourcePath =
-		'/' +
-		parts
-			.join('/')
-			.replace(/\/+/g, '/')
-			.replace(/\/$/, prop.resourcetype ? '/' : '');
+	let resourcePath = '/' + parts.join('/').replace(/\/+/g, '/');
+	if (prop.resourcetype === 'collection' && !resourcePath.endsWith('/')) {
+		resourcePath += '/';
+	}
 	return `  <D:response>
     <D:href>${resourcePath}</D:href>
     <D:propstat>
