@@ -268,7 +268,7 @@ async function handleDelete(request: Request, bucket: R2Bucket, env: Env): Promi
 		// Update quota (decrease)
 		await updateStorageQuota(env.QUOTA_KV, -head.size, -1);
 
-		return new Response('No Content', { status: 204 });
+		return new Response(null, { status: 204 });
 	} catch (error) {
 		const err = error as Error;
 		logger.error('Error deleting object:', err.message);

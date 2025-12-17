@@ -219,8 +219,9 @@ export function generateRegistrationOptions(
 		timeout: 60000, // 60 seconds
 		attestation: 'none', // No attestation required
 		authenticatorSelection: {
-			authenticatorAttachment: 'platform', // Prefer platform authenticators
-			requireResidentKey: false,
+			// No authenticatorAttachment restriction - allow both platform and cross-platform authenticators
+			// This enables password managers (Bitwarden, 1Password) and security keys
+			residentKey: 'required', // Require discoverable credentials for password manager support
 			userVerification: 'preferred',
 		},
 	};
@@ -268,7 +269,7 @@ export async function verifyRegistrationResponse(
 
 	// Step 2: Parse attestationObject (CBOR encoded)
 	const attestationObject = decodeCbor(new Uint8Array(credential.response.attestationObject));
-	const authDataBytes: Uint8Array = attestationObject.authData;
+	const authDataBytes: Uint8Array = attestationObject.get('authData');
 	if (!authDataBytes) {
 		throw new Error('Missing authData in attestationObject');
 	}
@@ -392,11 +393,45 @@ export async function verifyAuthenticationResponse(
 	const signature = new Uint8Array(credential.response.signature);
 
 	const publicKeyBytes = base64urlDecode(storedCredential.publicKey);
+	const coseKey = decodeCbor(publicKeyBytes); // 调试：避免重复解析
 	const cryptoKey = await importCosePublicKey(publicKeyBytes);
 	const algorithm = getVerifyAlgorithm(publicKeyBytes);
 
-	const verified = await crypto.subtle.verify(algorithm, cryptoKey, signature, signedData);
+	// 若是 ECDSA，将 DER 签名转换为 raw(r||s) 64 字节，以适配要求 raw 的运行时
+	let signatureForVerify = signature;
+	const algorithmName = typeof algorithm === 'string' ? algorithm : (algorithm as any)?.name;
+	if (algorithmName === 'ECDSA') {
+		try {
+			signatureForVerify = derToRawSignature(signature, 32);
+		} catch (e) {
+			console.error('[DEBUG][webauthn] derToRawSignature failed, will try DER directly', e);
+		}
+	}
+
+	console.log('[DEBUG][webauthn] verify inputs', {
+		alg: algorithm,
+		coseAlg: coseKey?.get ? coseKey.get(3) : coseKey?.alg,
+		signatureLen: signature.length,
+		sigFormat: signatureForVerify === signature ? 'DER' : 'raw',
+		signedDataLen: signedData.length,
+		signCount: authenticatorData.signCount,
+		flags: authenticatorData.flags,
+		rpIdHashHex: bufferToHex(authenticatorData.rpIdHash.buffer as ArrayBuffer),
+		clientDataHashHex: bufferToHex(clientDataHash.buffer as ArrayBuffer),
+		clientChallenge: clientData.challenge,
+		expectedChallenge: base64urlEncode(expectedChallenge),
+		clientOrigin: clientData.origin,
+		clientType: clientData.type,
+	});
+
+	const verified = await crypto.subtle.verify(algorithm, cryptoKey, signatureForVerify, signedData);
 	if (!verified) {
+		const signedDataHash = new Uint8Array(await crypto.subtle.digest('SHA-256', signedData));
+		console.error('[DEBUG][webauthn] signature verify failed', {
+			sigFormat: signatureForVerify === signature ? 'DER' : 'raw',
+			signatureB64: base64urlEncode(signature),
+			signedDataHashHex: bufferToHex(signedDataHash.buffer as ArrayBuffer),
+		});
 		throw new Error('Signature verification failed');
 	}
 
@@ -588,14 +623,15 @@ function getVerifyAlgorithm(coseKeyBytes: Uint8Array): AlgorithmIdentifier {
 	const alg = cose.get(3) ?? cose.alg;
 
 	if (alg === -7) {
-		return { name: 'ECDSA', hash: 'SHA-256' };
+		// Web Crypto 规范要求 hash 为 AlgorithmIdentifier 对象，部分运行时对纯字符串不兼容
+		return { name: 'ECDSA', hash: { name: 'SHA-256' } };
 	}
 	if (alg === -257) {
-		return { name: 'RSASSA-PKCS1-v1_5' };
+		return { name: 'RSASSA-PKCS1-v1_5', hash: { name: 'SHA-256' } };
 	}
 
 	// Default fallback
-	return { name: 'RSASSA-PKCS1-v1_5' };
+	return { name: 'RSASSA-PKCS1-v1_5', hash: { name: 'SHA-256' } };
 }
 
 // ==================== CBOR Decoder ====================
@@ -721,4 +757,24 @@ function toUint8(v: any): Uint8Array | null {
 		return new Uint8Array(v);
 	}
 	return null;
+}
+
+/**
+ * 将 DER 编码的 ECDSA 签名转换为 raw(r||s) 格式（定长 32+32）
+ * 某些运行时 verify 需要 raw 格式
+ */
+function derToRawSignature(derSig: Uint8Array, size = 32): Uint8Array {
+	if (derSig[0] !== 0x30) throw new Error('Invalid DER: not a SEQUENCE');
+	const rLen = derSig[3];
+	const rStart = 4;
+	const sStart = 4 + rLen + 2;
+	const sLen = derSig[sStart - 1];
+	const r = derSig.slice(rStart, rStart + rLen);
+	const s = derSig.slice(sStart, sStart + sLen);
+
+	const out = new Uint8Array(size * 2);
+	// 左侧补零到固定长度
+	out.set(r.slice(Math.max(0, r.length - size)), size - r.length + Math.max(0, r.length - size));
+	out.set(s.slice(Math.max(0, s.length - size)), size + (size - s.length + Math.max(0, s.length - size)));
+	return out;
 }

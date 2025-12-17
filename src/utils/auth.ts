@@ -982,6 +982,8 @@ export async function handlePasskeyRegisterStart(
 		const origin = request.headers.get('Origin') || env.WORKER_URL;
 		const rpId = new URL(origin).hostname;
 
+		console.log('[DEBUG] Registration start - rpId:', { rpId, origin });
+
 		// Generate registration options
 		const options = generateRegistrationOptions(username, username, rpId);
 
@@ -1137,10 +1139,10 @@ export async function handlePasskeyAuthStart(request: Request, env: Env): Promis
 		if (keyUser) statusChecks.push(getRateLimitStatus(env.RATE_LIMIT_KV, keyUser, PASSKEY_AUTH_RATE_LIMIT));
 		if (keyCombo) statusChecks.push(getRateLimitStatus(env.RATE_LIMIT_KV, keyCombo, PASSKEY_AUTH_RATE_LIMIT));
 
-		const [ipStatus, userStatus, comboStatus] = await Promise.all(statusChecks).then(results => [
+		const [ipStatus, userStatus, comboStatus] = await Promise.all(statusChecks).then((results) => [
 			results[0],
 			results[1] || { allowed: true },
-			results[2] || { allowed: true }
+			results[2] || { allowed: true },
 		]);
 
 		// If any key is already blocked, reject immediately
@@ -1203,6 +1205,13 @@ export async function handlePasskeyAuthStart(request: Request, env: Env): Promis
 
 		// Generate authentication options (empty allowCredentials if no passkeys)
 		const options = generateAuthenticationOptions(username || '', passkeys, rpId);
+
+		console.log('[DEBUG] Auth start - challenge generated:', {
+			challengeId,
+			challengeB64: base64urlEncode(challenge),
+			challengeLength: challenge.length,
+			username: username || '(empty)',
+		});
 
 		// Save challenge
 		await saveChallenge(kv, challengeId, challenge, username || '', 300);
@@ -1271,6 +1280,26 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 			});
 		}
 
+		// Debug: Check if credential data contains base64 or base64url characters
+		const checkEncoding = (value: unknown, name: string) => {
+			const str = typeof value === 'string' ? value : '';
+			return {
+				name,
+				sample: str.substring(0, 50),
+				hasPlus: str.includes('+'),
+				hasSlash: str.includes('/'),
+				hasDash: str.includes('-'),
+				hasUnderscore: str.includes('_'),
+			};
+		};
+		const credentialAny = credential as any;
+		console.log('[DEBUG] Credential encoding check:', [
+			checkEncoding(credentialAny?.rawId, 'rawId'),
+			checkEncoding(credentialAny?.response?.authenticatorData, 'authenticatorData'),
+			checkEncoding(credentialAny?.response?.clientDataJSON, 'clientDataJSON'),
+			checkEncoding(credentialAny?.response?.signature, 'signature'),
+		]);
+
 		// Normalize credential from client JSON format
 		const normalizedCredential = normalizeWebAuthnCredential(credential);
 
@@ -1287,8 +1316,9 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 		const userHandleBytes = userHandle instanceof Uint8Array ? userHandle : base64urlDecode(userHandle);
 		const userId = new TextDecoder().decode(userHandleBytes);
 
-		// Verify user matches
-		if (challengeRecord.userId !== userId) {
+		// Verify user matches (only for username-first flow)
+		// For usernameless flow, challengeRecord.userId will be empty string
+		if (challengeRecord.userId && challengeRecord.userId !== userId) {
 			return new Response(JSON.stringify({ error: 'Challenge user mismatch' }), {
 				status: 403,
 				headers: { 'Content-Type': 'application/json' },
@@ -1375,6 +1405,19 @@ export async function handlePasskeyAuthFinish(request: Request, env: Env): Promi
 		const origin = request.headers.get('Origin') || env.WORKER_URL;
 		const rpId = new URL(origin).hostname;
 		const expectedChallenge = base64urlDecode(challengeRecord.challenge);
+
+		console.log('[DEBUG] Auth finish verification:', {
+			userId,
+			username,
+			storedKey,
+			hasStoredCredential: !!storedCredential,
+			rpId,
+			origin,
+			challengeId,
+			challengeB64: challengeRecord.challenge,
+			challengeLength: expectedChallenge.length,
+		});
+
 		const verificationResult = await verifyAuthenticationResponse(
 			normalizedCredential,
 			expectedChallenge,

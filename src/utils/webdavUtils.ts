@@ -141,7 +141,7 @@ ${responses}
 
 function generatePropResponse(bucketName: string, basePath: string, prop: WebDAVProps): string {
 	// 规范化路径，避免出现多余的斜杠导致客户端发起 // 路径
-	const parts = [bucketName, basePath, prop.displayname || ''].filter((p) => p !== undefined);
+	const parts = [basePath, prop.displayname || ''].filter((p) => p);
 	const resourcePath =
 		'/' +
 		parts

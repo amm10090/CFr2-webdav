@@ -31,11 +31,155 @@ export function generateLoginScript(sessionKey: string): string {
       });
     };
 
+    // OTP 输入
+    const initOTPInputs = () => {
+      const otpInputs = ['otp-1', 'otp-2', 'otp-3', 'otp-4', 'otp-5', 'otp-6'].map(id => document.getElementById(id));
+      const hiddenInput = document.getElementById('login-totp');
+
+      if (!otpInputs.every(input => input) || !hiddenInput) return;
+
+      const updateHiddenInput = () => {
+        const value = otpInputs.map(input => input.value).join('');
+
+        if (hiddenInput.value !== value) {
+          hiddenInput.value = value;
+        }
+        lastSyncedHiddenValue = value;
+
+        otpInputs.forEach(input => {
+          if (input.value) {
+            input.classList.add('filled');
+          } else {
+            input.classList.remove('filled');
+          }
+        });
+      };
+
+      let lastSyncedHiddenValue = hiddenInput.value || '';
+      let syncingFromHidden = false;
+
+      otpInputs.forEach((input, index) => {
+        input.addEventListener('input', (e) => {
+          const value = e.target.value;
+
+          if (value && !/^[0-9]$/.test(value)) {
+            e.target.value = '';
+            return;
+          }
+
+          updateHiddenInput();
+
+          if (value && index < otpInputs.length - 1) {
+            otpInputs[index + 1].focus();
+          }
+
+          if (index === otpInputs.length - 1 && value) {
+            const allFilled = otpInputs.every(inp => inp.value);
+            if (allFilled) {
+              setTimeout(() => {
+                document.getElementById('btn-2fa')?.click();
+              }, 100);
+            }
+          }
+        });
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace' && !e.target.value && index > 0) {
+            otpInputs[index - 1].focus();
+            otpInputs[index - 1].value = '';
+            updateHiddenInput();
+          }
+
+          if (e.key === 'Enter') {
+            document.getElementById('btn-2fa')?.click();
+          }
+        });
+
+        // 粘贴
+        input.addEventListener('paste', (e) => {
+          if (!e.clipboardData) {
+            return;
+          }
+
+          const raw = (e.clipboardData.getData('text') || '').trim();
+          const digits = raw.replace(/\\D/g, '').slice(0, 6);
+
+          if (!digits.length) {
+            return;
+          }
+
+          e.preventDefault();
+
+          otpInputs.forEach((otpInput, i) => {
+            otpInput.value = digits[i] || '';
+          });
+          updateHiddenInput();
+
+          const filledCount = digits.length;
+          const lastFilledIndex = Math.min(filledCount, otpInputs.length) - 1;
+          if (lastFilledIndex >= 0) {
+            otpInputs[lastFilledIndex].focus();
+          }
+
+          if (digits.length === otpInputs.length) {
+            setTimeout(() => {
+              document.getElementById('btn-2fa')?.click();
+            }, 100);
+          }
+        });
+      });
+
+      // 自动填充
+      const syncFromHidden = () => {
+        const value = hiddenInput.value;
+        if (!value || !/^\\d{6}$/.test(value) || syncingFromHidden) return;
+        if (value === lastSyncedHiddenValue) {
+          return;
+        }
+
+        syncingFromHidden = true;
+        lastSyncedHiddenValue = value;
+        value.split('').forEach((char, i) => {
+          if (otpInputs[i]) {
+            otpInputs[i].value = char;
+          }
+        });
+        updateHiddenInput();
+        syncingFromHidden = false;
+      };
+
+      let autofillPollTimer = null;
+      const startAutofillPoll = () => {
+        if (autofillPollTimer) return;
+
+        let ticksLeft = 40;
+        autofillPollTimer = setInterval(() => {
+          ticksLeft--;
+          syncFromHidden();
+          if (ticksLeft <= 0) {
+            clearInterval(autofillPollTimer);
+            autofillPollTimer = null;
+          }
+        }, 250);
+      };
+
+      otpInputs.forEach((otpInput) => {
+        otpInput.addEventListener('focus', () => {
+          syncFromHidden();
+          startAutofillPoll();
+        });
+      });
+    };
+
     // Initialize on load
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initFloatingLabels);
+      document.addEventListener('DOMContentLoaded', () => {
+        initFloatingLabels();
+        initOTPInputs();
+      });
     } else {
       initFloatingLabels();
+      initOTPInputs();
     }
 
     // Session Management
@@ -102,6 +246,14 @@ export function generateLoginScript(sessionKey: string): string {
     // State Management
     let partialToken = '';
     let currentUsername = '';
+    let totpFailCount = 0;
+    let isVerifying2FA = false;
+
+    // Show recovery code section
+    const showRecoverySection = () => {
+      document.getElementById('recovery-section')?.classList.remove('hidden');
+    };
+
     document.getElementById('btn-login')?.addEventListener('click', async () => {
       hideError();
 
@@ -131,11 +283,13 @@ export function generateLoginScript(sessionKey: string): string {
         if (data.requires2FA) {
           partialToken = data.partialToken;
           currentUsername = username;
+          totpFailCount = 0;
 
           // Switch to 2FA step
           document.getElementById('step-password')?.classList.add('hidden');
           document.getElementById('step-2fa')?.classList.remove('hidden');
-          document.getElementById('login-totp')?.focus();
+          document.getElementById('recovery-section')?.classList.add('hidden');
+          document.getElementById('otp-1')?.focus();
           return;
         }
 
@@ -174,12 +328,17 @@ export function generateLoginScript(sessionKey: string): string {
         return;
       }
 
+      if (isVerifying2FA) {
+        return;
+      }
+
       if (!totpCode && !recoveryCode) {
         showError('请输入 TOTP 验证码或恢复代码。');
         return;
       }
 
       try {
+        isVerifying2FA = true;
         const response = await fetch('/auth/2fa/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -193,6 +352,10 @@ export function generateLoginScript(sessionKey: string): string {
         const data = await response.json();
 
         if (!response.ok) {
+          totpFailCount++;
+          if (totpFailCount >= 3) {
+            showRecoverySection();
+          }
           showError(data.error || '双因素验证失败，请重试。');
           return;
         }
@@ -210,22 +373,34 @@ export function generateLoginScript(sessionKey: string): string {
       } catch (error) {
         console.error('2FA verification error:', error);
         showError('无法验证双因素认证，请重试。');
+      } finally {
+        isVerifying2FA = false;
       }
     });
 
-    // Handle Enter key for TOTP input
-    document.getElementById('login-totp')?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        document.getElementById('btn-2fa')?.click();
-      }
+    // Lost 2FA link
+    document.getElementById('link-lost-2fa')?.addEventListener('click', () => {
+      showRecoverySection();
+      document.getElementById('login-recovery')?.focus();
     });
 
     // Back to login button
     document.getElementById('btn-back')?.addEventListener('click', () => {
       partialToken = '';
       currentUsername = '';
+      totpFailCount = 0;
       document.getElementById('step-2fa')?.classList.add('hidden');
       document.getElementById('step-password')?.classList.remove('hidden');
+      document.getElementById('recovery-section')?.classList.add('hidden');
+
+      // 清空 OTP 输入框
+      ['otp-1', 'otp-2', 'otp-3', 'otp-4', 'otp-5', 'otp-6'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+          input.value = '';
+          input.classList.remove('filled');
+        }
+      });
       document.getElementById('login-totp').value = '';
       document.getElementById('login-recovery').value = '';
       hideError();

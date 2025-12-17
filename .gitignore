@@ -188,3 +188,6 @@ docs/
 # Redis database dump
 dump.rdb
 wrangler.toml
+operations-log.md
+.claude/
+.codex/

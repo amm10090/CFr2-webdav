@@ -43,7 +43,23 @@ export type TranslationKey =
 	| 'themeDark'
 	| 'themeSystem'
 	| 'unauthorized'
-	| 'webdavError';
+	| 'webdavError'
+	| 'uploadQueue'
+	| 'queueEmpty'
+	| 'cancelUpload'
+	| 'retryUpload'
+	| 'clearCompleted'
+	| 'pending'
+	| 'uploading'
+	| 'completed'
+	| 'failed'
+	| 'canceled'
+	| 'selectedFiles'
+	| 'fileTypeNotAllowed'
+	| 'fileTooLarge'
+	| 'fileEmpty'
+	| 'multipleFilesSupported'
+	| 'uploadInProgress';
 
 export type Translations = Record<Language, Record<TranslationKey, string>>;
 
@@ -92,6 +108,22 @@ export const TRANSLATIONS: Translations = {
 		themeSystem: '跟随系统',
 		unauthorized: '未授权。请检查您的用户名和密码。',
 		webdavError: 'WebDAV 错误',
+		uploadQueue: '上传队列',
+		queueEmpty: '暂无上传任务',
+		cancelUpload: '取消',
+		retryUpload: '重试',
+		clearCompleted: '清除已完成',
+		pending: '等待中',
+		uploading: '上传中',
+		completed: '已完成',
+		failed: '失败',
+		canceled: '已取消',
+		selectedFiles: '已选择 {count} 个文件,总计 {size}',
+		fileTypeNotAllowed: '不支持的文件类型',
+		fileTooLarge: '文件大小超过限制',
+		fileEmpty: '文件不能为空',
+		multipleFilesSupported: '支持多文件上传',
+		uploadInProgress: '文件正在上传中,确定要离开吗?',
 	},
 	en: {
 		title: 'R2 WebDAV',
@@ -136,5 +168,21 @@ export const TRANSLATIONS: Translations = {
 		themeSystem: 'System',
 		unauthorized: 'Unauthorized. Please check your credentials.',
 		webdavError: 'WebDAV Error',
+		uploadQueue: 'Upload Queue',
+		queueEmpty: 'No uploads yet',
+		cancelUpload: 'Cancel',
+		retryUpload: 'Retry',
+		clearCompleted: 'Clear Completed',
+		pending: 'Pending',
+		uploading: 'Uploading',
+		completed: 'Completed',
+		failed: 'Failed',
+		canceled: 'Canceled',
+		selectedFiles: '{count} files selected, {size} total',
+		fileTypeNotAllowed: 'File type not allowed',
+		fileTooLarge: 'File size exceeds limit',
+		fileEmpty: 'File cannot be empty',
+		multipleFilesSupported: 'Multiple files supported',
+		uploadInProgress: 'Files are uploading. Are you sure you want to leave?',
 	},
 };
