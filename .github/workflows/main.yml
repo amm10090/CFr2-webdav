@@ -73,7 +73,7 @@ jobs:
 
       - name: Build Tailwind CSS
         run: |
-          pnpm exec @tailwindcss/cli -i ./src/styles/tailwind.css -o ./src/styles/tailwind.generated.css --minify
+          pnpm exec tailwindcss -i ./src/styles/tailwind.css -o ./src/styles/tailwind.generated.css --minify
           node scripts/embed-tailwind.js
 
       - name: Build & Deploy Worker
