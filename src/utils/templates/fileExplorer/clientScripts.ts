@@ -1,4 +1,5 @@
 import { TRANSLATIONS } from '../translations';
+import { FILE_ICONS, EXT_TO_ICON } from './icons';
 
 /**
  * Generate client-side JavaScript for file explorer
@@ -8,10 +9,16 @@ import { TRANSLATIONS } from '../translations';
  */
 export function generateFileExplorerScript(currentPath: string, initialItems: string): string {
 	const translationsJSON = JSON.stringify(TRANSLATIONS);
+	const fileIconsJSON = JSON.stringify(FILE_ICONS);
+	const extToIconJSON = JSON.stringify(EXT_TO_ICON);
 
 	return `
     // ---- Translations ----
     const TRANSLATIONS = ${translationsJSON};
+
+    // ---- File Icons ----
+    const FILE_ICONS = ${fileIconsJSON};
+    const EXT_TO_ICON = ${extToIconJSON};
 
     // ---- State ----
     const app = document.getElementById('app');
@@ -115,19 +122,56 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
       return entries;
     };
 
+    // 获取文件类型图标 SVG
+    const getFileTypeIcon = (ext, size = 48, colorClass = 'text-gray-500') => {
+      const iconKey = EXT_TO_ICON[ext] || 'file';
+      const svg = FILE_ICONS[iconKey];
+      return svg
+        .replace('<svg', \`<svg width="\${size}" height="\${size}" class="\${colorClass}"\`)
+        .replace('viewBox', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox');
+    };
+
+    // 判断是否为图片文件(用于缩略图)
+    const isImageFileForThumbnail = (ext) => {
+      return ['jpg','jpeg','png','gif','webp','bmp','avif'].includes(ext);
+    };
+
     const renderFileIcon = (file, size = 48) => {
-      const type = file.type;
-      if (type === 'directory') {
+      // 文件夹图标保持不变
+      if (file.type === 'directory') {
         return \`<svg class="text-blue-500 fill-blue-50 dark:fill-blue-900/30" width="\${size}" height="\${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>\`;
       }
+
       const ext = (file.name.split('.').pop() || '').toLowerCase();
-      const icon = (color) => \`<svg width="\${size}" height="\${size}" fill="none" stroke="currentColor" stroke-width="2" class="\${color}" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/></svg>\`;
-      if (['jpg','png','gif','jpeg','svg','webp'].includes(ext)) return icon('text-purple-500');
-      if (['mp4','mov','webm'].includes(ext)) return icon('text-red-500');
-      if (['mp3','wav','flac'].includes(ext)) return icon('text-yellow-500');
-      if (['pdf','txt','doc','docx','md','json'].includes(ext)) return icon('text-gray-500 dark:text-gray-400');
-      if (['zip','rar','7z','tar','gz'].includes(ext)) return icon('text-orange-500');
-      return icon('text-gray-400');
+
+      // 图片文件: 显示缩略图（使用 thumbnailUrl 或占位符）
+      if (isImageFileForThumbnail(ext)) {
+        if (file.thumbnailUrl) {
+          return \`<div class="w-full h-full overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+            <img src="\${file.thumbnailUrl}" alt="\${file.name}" class="w-full h-full object-cover" />
+          </div>\`;
+        }
+        return getFileTypeIcon('image', size, 'text-purple-500');
+      }
+
+      // 其他文件: 显示类型图标
+      const colorMap = {
+        pdf: 'text-red-500',
+        document: 'text-blue-500',
+        code: 'text-green-500',
+        image: 'text-purple-500',
+        video: 'text-pink-500',
+        audio: 'text-yellow-500',
+        archive: 'text-orange-500',
+        sheet: 'text-emerald-500',
+        presentation: 'text-indigo-500',
+        file: 'text-gray-400 dark:text-gray-500',
+      };
+
+      const iconKey = EXT_TO_ICON[ext] || 'file';
+      const colorClass = colorMap[iconKey] || colorMap.file;
+
+      return getFileTypeIcon(ext, size, colorClass);
     };
 
     const isImageFile = (name) => {
@@ -140,9 +184,30 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
       previewScale = 1;
       previewRotation = 0;
       render();
+
+      // Load image with auth after render (async)
+      if (isImageFile(file.name) && !file.blobUrl) {
+        (async () => {
+          try {
+            const url = auth.url ? auth.url.replace(/\\/$/, '') + file.href : file.href;
+            const headers = await getHeaders();
+            const response = await fetch(url, { headers });
+            if (response.ok) {
+              const blob = await response.blob();
+              file.blobUrl = URL.createObjectURL(blob);
+              render();
+            }
+          } catch (e) {
+            console.error('Failed to load image:', e);
+          }
+        })();
+      }
     };
 
     const closePreview = () => {
+      if (previewFile?.blobUrl) {
+        URL.revokeObjectURL(previewFile.blobUrl);
+      }
       previewFile = null;
       render();
     };
@@ -261,11 +326,52 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
           return entryPath !== currentDir && f.href !== path;
         });
         files = parsed;
+        loadThumbnails();
       } catch (e) {
         error = e.message || t().connectionError;
       } finally {
         loading = false;
         render();
+      }
+    };
+
+    const loadThumbnails = async () => {
+      const imageFiles = files.filter(f => f.type === 'file' && isImageFile(f.name));
+      for (const file of imageFiles) {
+        if (!file.thumbnailUrl) {
+          (async () => {
+            try {
+              const url = auth.url.replace(/\\/$/, '') + file.href;
+              const headers = await getHeaders();
+              const res = await fetch(url, { headers });
+              if (res.ok) {
+                const blob = await res.blob();
+                file.thumbnailUrl = URL.createObjectURL(blob);
+                render();
+              }
+            } catch (e) {
+              console.error('Failed to load thumbnail:', e);
+            }
+          })();
+        }
+      }
+    };
+
+    const downloadFile = async (href, filename) => {
+      try {
+        const url = auth.url.replace(/\\/$/, '') + href;
+        const headers = await getHeaders();
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error('Download failed');
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+      } catch (e) {
+        alert('Failed to download file: ' + e.message);
       }
     };
 
@@ -505,7 +611,7 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
       const tdict = t();
       const previewIsImage = previewFile ? isImageFile(previewFile.name) : false;
       const previewSrc = previewFile
-        ? (auth.url ? auth.url.replace(/\\/$/, '') + previewFile.href : previewFile.href)
+        ? (previewFile.blobUrl || (auth.url ? auth.url.replace(/\\/$/, '') + previewFile.href : previewFile.href))
         : '';
       applyTheme();
 
@@ -1261,7 +1367,7 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
           } else if (isImageFile(file.name)) {
             openPreview(file);
           } else {
-            window.open(auth.url.replace(/\\/$/, '') + href, '_blank');
+            downloadFile(href, file.name);
           }
         });
       });
@@ -1269,7 +1375,7 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
         btn.addEventListener('click', (e) => { e.stopPropagation(); const href = btn.getAttribute('data-del'); const file = files.find(f => f.href === href); if (file) handleDelete(file); });
       });
       document.querySelectorAll('[data-dl]').forEach(btn => {
-        btn.addEventListener('click', (e) => { e.stopPropagation(); const href = btn.getAttribute('data-dl'); window.open(auth.url.replace(/\\/$/, '') + href, '_blank'); });
+        btn.addEventListener('click', (e) => { e.stopPropagation(); const href = btn.getAttribute('data-dl'); const file = files.find(f => f.href === href); if (file) downloadFile(href, file.name); });
       });
       const lb = document.getElementById('lightbox');
       if (lb) {
@@ -1298,6 +1404,31 @@ export function generateFileExplorerScript(currentPath: string, initialItems: st
       document.getElementById('passkeyModalClose')?.addEventListener('click', () => {
         closeModal('passkeyModal');
       });
+
+      // Setup lazy loading for images
+      // Modern browsers support native lazy loading via loading="lazy" attribute
+      // For older browsers, we provide IntersectionObserver fallback
+      if (!('loading' in HTMLImageElement.prototype)) {
+        const images = document.querySelectorAll('img[loading="lazy"]');
+        if (images.length > 0 && 'IntersectionObserver' in window) {
+          const imageObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                const img = entry.target;
+                if (img.dataset.src) {
+                  img.src = img.dataset.src;
+                  img.removeAttribute('data-src');
+                }
+                imageObserver.unobserve(img);
+              }
+            });
+          }, {
+            rootMargin: '50px'
+          });
+
+          images.forEach(img => imageObserver.observe(img));
+        }
+      }
     };
 
     // TOTP Modal Functions

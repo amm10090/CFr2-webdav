@@ -123,7 +123,7 @@ async function handleDirectory(
 	let items = [];
 
 	if (resource_path !== '') {
-		items.push({ name: '📁 ..', href: '../' });
+		items.push({ name: '..', href: '../', type: 'directory' });
 	}
 
 	try {
@@ -132,7 +132,13 @@ async function handleDirectory(
 			const isDirectory = object.customMetadata?.resourcetype === 'collection';
 			const displayName = object.key.split('/').pop() || object.key;
 			const href = `/${object.key}${isDirectory ? '/' : ''}`;
-			items.push({ name: `${isDirectory ? '📁 ' : '📄 '}${displayName}`, href });
+			items.push({
+				name: displayName,
+				href,
+				type: isDirectory ? 'directory' : 'file',
+				size: object.size,
+				modified: object.uploaded,
+			});
 		}
 	} catch (error) {
 		const err = error as Error;

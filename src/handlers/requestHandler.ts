@@ -66,6 +66,14 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
 			return response;
 		}
 
+		// Handle common browser requests that don't need authentication
+		// Return 404 instead of 401 to avoid confusing error messages
+		if (url.pathname === '/favicon.ico' || url.pathname.endsWith('.dict.yaml')) {
+			const response = new Response('Not Found', { status: 404 });
+			setCORSHeaders(response, request, env);
+			return response;
+		}
+
 		// Handle login page (no authentication required)
 		if (url.pathname === '/login' && request.method === 'GET') {
 			// If already authenticated, redirect to home page
