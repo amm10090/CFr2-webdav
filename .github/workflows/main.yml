@@ -12,14 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.26.0
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.26.0
 
       - name: Create wrangler.toml
         env:
