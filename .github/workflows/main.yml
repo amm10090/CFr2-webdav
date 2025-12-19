@@ -44,17 +44,18 @@ jobs:
           if [ -z "$TOTP_KV_ID" ]; then
             echo "::error::Missing secret TOTP_KV_ID (create KV namespace: wrangler kv:namespace create TOTP_KV)"; exit 1;
           fi
-          sed -e "s/\$USERNAME/$USERNAME/g" \
-              -e "s/\$PASSWORD/$PASSWORD/g" \
-              -e "s|\$PASSWORD_HASH|$PASSWORD_HASH|g" \
-              -e "s|\$JWT_SECRET|$JWT_SECRET|g" \
-              -e "s|\$WORKER_URL|$WORKER_URL|g" \
-              -e "s/\$BUCKET_NAME/$BUCKET_NAME/g" \
-              -e "s/\$ACCOUNT_ID/$ACCOUNT_ID/g" \
-              -e "s/\$RATE_LIMIT_KV_ID/$RATE_LIMIT_KV_ID/g" \
-              -e "s/\$QUOTA_KV_ID/$QUOTA_KV_ID/g" \
-              -e "s/\$TOTP_KV_ID/$TOTP_KV_ID/g" \
-              wrangler.toml.template > wrangler.toml
+          # Use a more robust replacement method for values with special characters
+          cp wrangler.toml.template wrangler.toml
+          sed -i "s/\$USERNAME/$USERNAME/g" wrangler.toml
+          sed -i "s/\$BUCKET_NAME/$BUCKET_NAME/g" wrangler.toml
+          sed -i "s/\$ACCOUNT_ID/$ACCOUNT_ID/g" wrangler.toml
+          sed -i "s/\$RATE_LIMIT_KV_ID/$RATE_LIMIT_KV_ID/g" wrangler.toml
+          sed -i "s/\$QUOTA_KV_ID/$QUOTA_KV_ID/g" wrangler.toml
+          sed -i "s/\$TOTP_KV_ID/$TOTP_KV_ID/g" wrangler.toml
+          # Use @ as delimiter for values with special characters
+          sed -i "s@\$PASSWORD_HASH@$PASSWORD_HASH@g" wrangler.toml
+          sed -i "s@\$JWT_SECRET@$JWT_SECRET@g" wrangler.toml
+          sed -i "s@\$WORKER_URL@$WORKER_URL@g" wrangler.toml
           cat wrangler.toml
 
       - name: Validate API token
