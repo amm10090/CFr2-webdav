@@ -35,7 +35,7 @@ export interface Env {
  */
 export interface AuthContext {
 	userId: string; // Authenticated user identifier
-	tokenType?: 'access' | 'refresh'; // Type of JWT token used (if JWT auth)
+	tokenType?: 'access' | 'refresh' | 'basic'; // Type of authentication (JWT or Basic Auth)
 	authenticated: boolean; // Always true for authenticated requests
 }
 

@@ -70,6 +70,11 @@ export async function authenticate(request: Request, env: Env): Promise<AuthCont
 		return await authenticateJWT(authHeader, env);
 	}
 
+	// Try Basic authentication (for WebDAV clients)
+	if (authHeader.startsWith('Basic ')) {
+		return await authenticateBasic(authHeader, env);
+	}
+
 	// Unknown authentication type
 	return null;
 }
@@ -106,6 +111,42 @@ async function authenticateJWT(authHeader: string, env: Env): Promise<AuthContex
 }
 
 /**
+ * Authenticate using HTTP Basic Authentication
+ *
+ * @param authHeader - Authorization header value
+ * @param env - Environment bindings
+ * @returns AuthContext if valid credentials, null otherwise
+ */
+async function authenticateBasic(authHeader: string, env: Env): Promise<AuthContext | null> {
+	try {
+		// Extract and decode Base64 credentials
+		const base64Credentials = authHeader.substring('Basic '.length);
+		const credentials = atob(base64Credentials);
+		const [username, password] = credentials.split(':');
+
+		// Verify username
+		if (username !== env.USERNAME) {
+			return null;
+		}
+
+		// Verify password using the same method as login
+		const isValid = await verifyPasswordWithFallback(password, env);
+		if (!isValid) {
+			return null;
+		}
+
+		// Return authentication context
+		return {
+			userId: env.USERNAME,
+			tokenType: 'basic',
+			authenticated: true,
+		};
+	} catch (error) {
+		// Invalid Base64 or malformed header
+		return null;
+	}
+}
+
 /**
  * Handle login request to generate JWT tokens
  *
