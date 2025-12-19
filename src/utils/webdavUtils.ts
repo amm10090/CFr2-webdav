@@ -104,10 +104,29 @@ export async function* listAll(bucket: R2Bucket, prefix: string) {
 		if (result.delimitedPrefixes && result.delimitedPrefixes.length > 0) {
 			logger.info(`Found ${result.delimitedPrefixes.length} folders:`, result.delimitedPrefixes);
 			for (const folderPrefix of result.delimitedPrefixes) {
+				// 尝试获取真实的文件夹对象
 				const folderObject = await bucket.head(folderPrefix);
 				logger.info(`Folder ${folderPrefix}:`, folderObject ? 'found' : 'not found');
+
 				if (folderObject) {
+					// 如果是真实对象，直接返回
 					yield folderObject;
+				} else {
+					// 如果不是真实对象（虚拟目录），创建一个虚拟对象
+					const virtualFolder = {
+						key: folderPrefix,
+						size: 0,
+						uploaded: new Date(),
+						httpMetadata: {},
+						customMetadata: { resourcetype: 'collection' },
+						etag: '',
+						httpEtag: '',
+						checksums: {},
+						version: '',
+						storageClass: 'Standard',
+						writeHttpMetadata: () => {},
+					} as unknown as R2Object;
+					yield virtualFolder;
 				}
 			}
 		}
